@@ -27,6 +27,14 @@ type etonifyCapabilitySet struct {
 	URLTestCompletionModel                  string   `json:"url_test_completion_model"`
 	SupportsConfigCheck                     bool     `json:"supports_config_check"`
 	SupportsCloseConnections                bool     `json:"supports_close_connections"`
+	SupportsXHTTP                           bool     `json:"supports_xhttp"`
+	SupportsSplitHTTPAlias                  bool     `json:"supports_splithttp_alias"`
+	XHTTPClientOnly                         bool     `json:"xhttp_client_only"`
+	XHTTPProfile                            string   `json:"xhttp_profile"`
+	XHTTPModes                              []string `json:"xhttp_modes"`
+	XHTTPMaxPoolConnections                 int      `json:"xhttp_max_pool_connections"`
+	XHTTPMaxPacketUploadBytes               int      `json:"xhttp_max_packet_upload_bytes"`
+	SupportsXHTTPCloseAll                   bool     `json:"supports_xhttp_close_all"`
 	TUNStacks                               []string `json:"tun_stacks"`
 }
 
@@ -51,6 +59,14 @@ func EtonifyCapabilities() string {
 		URLTestCompletionModel:        "group_events",
 		SupportsConfigCheck:           true,
 		SupportsCloseConnections:      true,
+		SupportsXHTTP:                 true,
+		SupportsSplitHTTPAlias:        true,
+		XHTTPClientOnly:               true,
+		XHTTPProfile:                  "etonify_client_v1",
+		XHTTPModes:                    []string{"packet-up", "stream-up", "stream-one"},
+		XHTTPMaxPoolConnections:       16,
+		XHTTPMaxPacketUploadBytes:     256 * 1024,
+		SupportsXHTTPCloseAll:         true,
 		TUNStacks:                     []string{"system", "gvisor", "mixed"},
 	}
 	content, err := json.Marshal(capabilities)

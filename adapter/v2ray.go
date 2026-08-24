@@ -22,3 +22,27 @@ type V2RayClientTransport interface {
 	DialContext(ctx context.Context) (net.Conn, error)
 	Close() error
 }
+
+// V2RayClientTransportResetter is implemented by transports that can discard
+// network-bound state without becoming permanently closed.
+//
+// Interface updates happen during handover between Wi-Fi and mobile networks.
+// Most transports must be recreated after such an update, but XHTTP can close
+// its old requests and connection pools while remaining usable for the next
+// dial.
+type V2RayClientTransportResetter interface {
+	Reset()
+}
+
+// ResetV2RayClientTransport resets a transport when it supports handover.
+// Older transports keep the previous behaviour and are closed instead.
+func ResetV2RayClientTransport(transport V2RayClientTransport) {
+	if transport == nil {
+		return
+	}
+	if resetter, isResettable := transport.(V2RayClientTransportResetter); isResettable {
+		resetter.Reset()
+		return
+	}
+	_ = transport.Close()
+}
