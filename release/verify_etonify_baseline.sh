@@ -8,6 +8,14 @@ cd "${repository_root}"
 # shellcheck disable=SC1091
 source release/ETONIFY_BASELINE
 
+etonify_version="$(tr -d '\r\n' < release/ETONIFY_VERSION)"
+etonify_version_prefix="${UPSTREAM_TAG}-etonify."
+etonify_version_suffix="${etonify_version#"${etonify_version_prefix}"}"
+if [[ "${etonify_version}" != "${etonify_version_prefix}"* || ! "${etonify_version_suffix}" =~ ^[0-9]+$ ]]; then
+  printf 'invalid Etonify version: %s (expected %s-etonify.N)\n' "${etonify_version}" "${UPSTREAM_TAG}" >&2
+  exit 1
+fi
+
 git cat-file -e "${UPSTREAM_COMMIT}^{commit}"
 git merge-base --is-ancestor "${UPSTREAM_COMMIT}" HEAD
 
@@ -25,6 +33,7 @@ for excluded_tag in with_usbip with_openvpn with_openconnect; do
 done
 
 printf 'upstream=%s\n' "${UPSTREAM_COMMIT}"
+printf 'etonify=%s\n' "${etonify_version}"
 printf 'go=%s\n' "${GO_VERSION}"
 printf 'gomobile=%s\n' "${GOMOBILE_VERSION}"
 printf 'ndk=%s\n' "${ANDROID_NDK_VERSION}"
