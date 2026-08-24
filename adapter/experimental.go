@@ -190,3 +190,9 @@ type URLTestGroup interface {
 	URLTest(ctx context.Context) (map[string]uint16, error)
 	PerformUpdateCheck()
 }
+
+// URLTestSelectionRefresher lets managed probe sessions recalculate a URLTest
+// group's selected outbound without starting a second set of network probes.
+type URLTestSelectionRefresher interface {
+	RefreshURLTestSelection()
+}

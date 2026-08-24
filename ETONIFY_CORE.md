@@ -80,3 +80,8 @@ parallel work, replace stale forced sessions, and report a stable error code to
 the client. External-address lookups use the selected concrete outbound,
 bounded response sizes, a second provider, request coalescing, and a short
 stale cache so a transient provider failure does not blank already known data.
+
+Managed probe sessions also refresh URLTest selections after their final
+result. Failed real dials invalidate only the affected outbound and immediately
+recalculate the group from known healthy history; unavailable/error-only
+entries can no longer win simply because they contain a history timestamp.

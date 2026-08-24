@@ -335,6 +335,33 @@ func (s *StartedService) runURLTestSession(ctx context.Context, groupTag string,
 			Status: adapter.URLTestStatusAvailable,
 		})
 	})
+	if s.isCurrentURLTestSession(groupTag, session) {
+		refreshURLTestGroupSelections(session.instance.outboundManager, groupTag)
+	}
+}
+
+func refreshURLTestGroupSelections(outboundManager adapter.OutboundManager, rootTag string) {
+	visited := make(map[string]bool)
+	var visit func(string)
+	visit = func(tag string) {
+		if visited[tag] {
+			return
+		}
+		visited[tag] = true
+		outbound, loaded := outboundManager.Outbound(tag)
+		if !loaded {
+			return
+		}
+		if refresher, isRefresher := outbound.(adapter.URLTestSelectionRefresher); isRefresher {
+			refresher.RefreshURLTestSelection()
+		}
+		if group, isGroup := outbound.(adapter.OutboundGroup); isGroup {
+			for _, childTag := range group.All() {
+				visit(childTag)
+			}
+		}
+	}
+	visit(rootTag)
 }
 
 func runURLTestTargets(ctx context.Context, targets []urlTestTarget, options urlTestSessionOptions, probe urlTestProbe, handleResult urlTestResultHandler) {
