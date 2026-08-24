@@ -19,6 +19,7 @@ service StartedService {
   rpc SetClashMode(ClashMode) returns(google.protobuf.Empty) {}
 
   rpc URLTest(URLTestRequest) returns(google.protobuf.Empty) {}
+  rpc LookupOutboundExternalInfo(OutboundExternalInfoRequest) returns(OutboundExternalInfoResponse) {}
   rpc SelectOutbound(SelectOutboundRequest) returns (google.protobuf.Empty) {}
   rpc SetGroupExpand(SetGroupExpandRequest) returns (google.protobuf.Empty) {}
 
@@ -127,10 +128,30 @@ message GroupItem {
   string type = 2;
   int64 urlTestTime = 3;
   int32 urlTestDelay = 4;
+  string urlTestStatus = 5;
+  string urlTestError = 6;
+  string urlTestErrorCode = 7;
 }
 
 message URLTestRequest {
   string outboundTag = 1;
+  string urlTestUrl = 2;
+  string targetOutboundTag = 3;
+  string priorityOutboundTag = 4;
+  string excludeOutboundTag = 5;
+  int32 timeoutMillis = 6;
+  int32 concurrency = 7;
+  int32 deadlineMillis = 8;
+  bool force = 9;
+}
+
+message OutboundExternalInfoRequest {
+  string outboundTag = 1;
+}
+
+message OutboundExternalInfoResponse {
+  string ip = 1;
+  string countryCode = 2;
 }
 
 message SelectOutboundRequest {

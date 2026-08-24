@@ -14,14 +14,12 @@ import (
 	"github.com/sagernet/sing-box/common/networkquality"
 	"github.com/sagernet/sing-box/common/stun"
 	"github.com/sagernet/sing-box/common/trafficcontrol"
-	"github.com/sagernet/sing-box/common/urltest"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/experimental/deprecated"
 	"github.com/sagernet/sing-box/experimental/locale"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/protocol/group"
 	"github.com/sagernet/sing/common"
-	"github.com/sagernet/sing/common/batch"
 	"github.com/sagernet/sing/common/memory"
 	"github.com/sagernet/sing/common/observable"
 	"github.com/sagernet/sing/common/x/list"
@@ -72,6 +70,9 @@ type StartedService struct {
 	startedAt               time.Time
 	urlTestSubscriber       *observable.Subscriber[struct{}]
 	urlTestObserver         *observable.Observer[struct{}]
+	urlTestSessionAccess    sync.Mutex
+	urlTestSessions         map[string]*urlTestSession
+	urlTestSessionSequence  uint64
 	clashModeSubscriber     *observable.Subscriber[struct{}]
 	clashModeObserver       *observable.Observer[struct{}]
 	notificationSubscriber  *observable.Subscriber[*NotificationEvent]
@@ -113,6 +114,7 @@ func NewStartedService(options ServiceOptions) *StartedService {
 		serviceStatusSubscriber: observable.NewSubscriber[*ServiceStatus](4),
 		logSubscriber:           observable.NewSubscriber[*log.Entry](128),
 		urlTestSubscriber:       observable.NewSubscriber[struct{}](1),
+		urlTestSessions:         make(map[string]*urlTestSession),
 		clashModeSubscriber:     observable.NewSubscriber[struct{}](1),
 		notificationSubscriber:  observable.NewSubscriber[*NotificationEvent](notificationQueueSize),
 	}
@@ -619,6 +621,9 @@ func (s *StartedService) readGroups() *Groups {
 			if history := historyStorage.LoadURLTestHistory(adapter.OutboundTag(itemOutbound)); history != nil {
 				item.UrlTestTime = history.Time.Unix()
 				item.UrlTestDelay = int32(history.Delay)
+				item.UrlTestStatus = adapter.URLTestHistoryStatus(history)
+				item.UrlTestError = history.Error
+				item.UrlTestErrorCode = history.ErrorCode
 			}
 			g.Items = append(g.Items, &item)
 		}
@@ -711,65 +716,7 @@ func (s *StartedService) SetClashMode(ctx context.Context, request *ClashMode) (
 }
 
 func (s *StartedService) URLTest(ctx context.Context, request *URLTestRequest) (*emptypb.Empty, error) {
-	s.serviceAccess.RLock()
-	if s.serviceStatus.Status != ServiceStatus_STARTED {
-		s.serviceAccess.RUnlock()
-		return nil, os.ErrInvalid
-	}
-	boxService := s.instance
-	s.serviceAccess.RUnlock()
-	outboundTag := request.OutboundTag
-	outbound, isLoaded := boxService.outboundManager.Outbound(outboundTag)
-	if !isLoaded {
-		return nil, status.Error(codes.NotFound, "outbound not found: "+outboundTag)
-	}
-	historyStorage := boxService.urlTestHistoryStorage
-	urlTest, isURLTest := outbound.(*group.URLTest)
-	outboundGroup, isOutboundGroup := outbound.(adapter.OutboundGroup)
-	if isURLTest {
-		go urlTest.CheckOutbounds()
-	} else if isOutboundGroup {
-		outbounds := common.Filter(common.Map(outboundGroup.All(), func(it string) adapter.Outbound {
-			itOutbound, _ := boxService.outboundManager.Outbound(it)
-			return itOutbound
-		}), func(it adapter.Outbound) bool {
-			if it == nil {
-				return false
-			}
-			_, isGroup := it.(adapter.OutboundGroup)
-			return !isGroup
-		})
-		b, _ := batch.New(boxService.ctx, batch.WithConcurrencyNum[any](10))
-		for _, detour := range outbounds {
-			outboundToTest := detour
-			itemTag := outboundToTest.Tag()
-			b.Go(itemTag, func() (any, error) {
-				t, err := urltest.URLTest(boxService.ctx, "", outboundToTest)
-				if err != nil {
-					historyStorage.DeleteURLTestHistory(itemTag)
-				} else {
-					historyStorage.StoreURLTestHistory(itemTag, &adapter.URLTestHistory{
-						Time:  time.Now(),
-						Delay: t,
-					})
-				}
-				return nil, nil
-			})
-		}
-	} else {
-		go func() {
-			t, err := urltest.URLTest(boxService.ctx, "", outbound)
-			if err != nil {
-				historyStorage.DeleteURLTestHistory(outboundTag)
-			} else {
-				historyStorage.StoreURLTestHistory(outboundTag, &adapter.URLTestHistory{
-					Time:  time.Now(),
-					Delay: t,
-				})
-			}
-		}()
-	}
-	return &emptypb.Empty{}, nil
+	return s.startURLTest(request)
 }
 
 func (s *StartedService) SelectOutbound(ctx context.Context, request *SelectOutboundRequest) (*emptypb.Empty, error) {

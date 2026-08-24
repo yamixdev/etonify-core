@@ -21,8 +21,30 @@ type ClashServer interface {
 }
 
 type URLTestHistory struct {
-	Time  time.Time `json:"time"`
-	Delay uint16    `json:"delay"`
+	Time      time.Time `json:"time"`
+	Delay     uint16    `json:"delay"`
+	Status    string    `json:"status,omitempty"`
+	Error     string    `json:"error,omitempty"`
+	ErrorCode string    `json:"error_code,omitempty"`
+}
+
+const (
+	URLTestStatusAvailable   = "available"
+	URLTestStatusUnavailable = "unavailable"
+)
+
+func URLTestHistoryIsAvailable(history *URLTestHistory) bool {
+	return history != nil && history.Delay > 0
+}
+
+func URLTestHistoryStatus(history *URLTestHistory) string {
+	if URLTestHistoryIsAvailable(history) {
+		return URLTestStatusAvailable
+	}
+	if history == nil {
+		return ""
+	}
+	return history.Status
 }
 
 type V2RayServer interface {
