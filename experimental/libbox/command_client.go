@@ -2,6 +2,7 @@ package libbox
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net"
 	"os"
@@ -605,6 +606,37 @@ func (c *CommandClient) LookupOutboundExternalInfo(outboundTag string) (*Outboun
 		return nil, E.Cause(err, "lookup outbound external info")
 	}
 	return &OutboundExternalInfo{Ip: result.Ip, CountryCode: result.CountryCode}, nil
+}
+
+func (c *CommandClient) FetchURLViaOutbound(outboundTag string, rawURL string, headersJSON string, maxBytes int32, timeoutMillis int32) (*OutboundHTTPFetchResult, error) {
+	headers := make(map[string]string)
+	if headersJSON != "" {
+		if err := json.Unmarshal([]byte(headersJSON), &headers); err != nil {
+			return nil, E.Cause(err, "decode outbound HTTP headers")
+		}
+	}
+	result, err := callWithResult(c, func(ctx context.Context, client daemon.StartedServiceClient) (*daemon.OutboundHTTPFetchResponse, error) {
+		return client.FetchURLViaOutbound(ctx, &daemon.OutboundHTTPFetchRequest{
+			OutboundTag:   outboundTag,
+			Url:           rawURL,
+			Headers:       headers,
+			MaxBytes:      maxBytes,
+			TimeoutMillis: timeoutMillis,
+		})
+	})
+	if err != nil {
+		return nil, E.Cause(err, "fetch URL via outbound")
+	}
+	responseHeaders, err := json.Marshal(result.Headers)
+	if err != nil {
+		return nil, E.Cause(err, "encode outbound HTTP response headers")
+	}
+	return &OutboundHTTPFetchResult{
+		StatusCode: result.StatusCode,
+		Body:       result.Body,
+		Headers:    string(responseHeaders),
+		FinalURL:   result.FinalUrl,
+	}, nil
 }
 
 func (c *CommandClient) SetClashMode(newMode string) error {

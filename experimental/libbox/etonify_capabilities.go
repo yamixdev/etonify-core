@@ -15,6 +15,7 @@ type etonifyCapabilitySet struct {
 	SupportsGroupURLTestSessions            bool     `json:"supports_group_url_test_sessions"`
 	SupportsStructuredProbeErrors           bool     `json:"supports_structured_probe_errors"`
 	SupportsOutboundExternalInfo            bool     `json:"supports_outbound_external_info"`
+	SupportsOutboundHTTPFetch               bool     `json:"supports_outbound_http_fetch"`
 	SupportsMixedRoutingOutbound            bool     `json:"supports_mixed_routing_outbound"`
 	SupportsURLTestTimeout                  bool     `json:"supports_url_test_timeout"`
 	SupportsURLTestConcurrency              bool     `json:"supports_url_test_concurrency"`
@@ -57,6 +58,7 @@ func EtonifyCapabilities() string {
 		SupportsGroupURLTestSessions:      true,
 		SupportsStructuredProbeErrors:     true,
 		SupportsOutboundExternalInfo:      true,
+		SupportsOutboundHTTPFetch:         true,
 		SupportsURLTestTimeout:            true,
 		SupportsURLTestConcurrency:        true,
 		SupportsURLTestDeadline:           true,
