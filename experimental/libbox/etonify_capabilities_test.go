@@ -20,6 +20,7 @@ func TestEtonifyCapabilities(t *testing.T) {
 	require.True(t, capabilities.SupportsGroupURLTestSessions)
 	require.True(t, capabilities.SupportsStructuredProbeErrors)
 	require.True(t, capabilities.SupportsOutboundExternalInfo)
+	require.True(t, capabilities.SupportsOutboundHTTPFetch)
 	require.False(t, capabilities.SupportsMixedRoutingOutbound)
 	require.True(t, capabilities.SupportsURLTestTimeout)
 	require.True(t, capabilities.SupportsURLTestConcurrency)

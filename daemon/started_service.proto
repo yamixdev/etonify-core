@@ -20,6 +20,7 @@ service StartedService {
 
   rpc URLTest(URLTestRequest) returns(google.protobuf.Empty) {}
   rpc LookupOutboundExternalInfo(OutboundExternalInfoRequest) returns(OutboundExternalInfoResponse) {}
+  rpc FetchURLViaOutbound(OutboundHTTPFetchRequest) returns(OutboundHTTPFetchResponse) {}
   rpc SelectOutbound(SelectOutboundRequest) returns (google.protobuf.Empty) {}
   rpc SetGroupExpand(SetGroupExpandRequest) returns (google.protobuf.Empty) {}
 
@@ -826,4 +827,19 @@ message Notification {
 message NotificationCancel {
   string identifier = 1;
   int32 typeID = 2;
+}
+
+message OutboundHTTPFetchRequest {
+  string outboundTag = 1;
+  string url = 2;
+  map<string, string> headers = 3;
+  int32 maxBytes = 4;
+  int32 timeoutMillis = 5;
+}
+
+message OutboundHTTPFetchResponse {
+  int32 statusCode = 1;
+  bytes body = 2;
+  map<string, string> headers = 3;
+  string finalUrl = 4;
 }

@@ -76,6 +76,13 @@ type OutboundExternalInfo struct {
 	CountryCode string
 }
 
+type OutboundHTTPFetchResult struct {
+	StatusCode int32
+	Body       []byte
+	Headers    string
+	FinalURL   string
+}
+
 type OutboundGroupItemIterator interface {
 	Next() *OutboundGroupItem
 	HasNext() bool
