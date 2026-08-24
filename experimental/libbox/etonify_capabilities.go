@@ -27,6 +27,7 @@ type etonifyCapabilitySet struct {
 	URLTestCompletionModel                  string   `json:"url_test_completion_model"`
 	SupportsConfigCheck                     bool     `json:"supports_config_check"`
 	SupportsCloseConnections                bool     `json:"supports_close_connections"`
+	SupportsRealitySpiderX                  bool     `json:"supports_reality_spider_x"`
 	SupportsXHTTP                           bool     `json:"supports_xhttp"`
 	SupportsSplitHTTPAlias                  bool     `json:"supports_splithttp_alias"`
 	XHTTPClientOnly                         bool     `json:"xhttp_client_only"`
@@ -64,6 +65,7 @@ func EtonifyCapabilities() string {
 		URLTestCompletionModel:            "group_events",
 		SupportsConfigCheck:               true,
 		SupportsCloseConnections:          true,
+		SupportsRealitySpiderX:            true,
 		SupportsXHTTP:                     true,
 		SupportsSplitHTTPAlias:            true,
 		XHTTPClientOnly:                   true,
