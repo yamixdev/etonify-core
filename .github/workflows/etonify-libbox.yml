@@ -57,8 +57,26 @@ jobs:
         run: bash release/verify_etonify_baseline.sh
       - name: Test
         run: go test ./...
+      - name: Validate Android configuration corpus
+        run: >-
+          go test
+          -tags "with_gvisor,with_quic,with_wireguard,with_utls,with_naive_outbound"
+          -run 'TestEtonify(AndroidConfigCorpus|NaiveConfigCompatibility)'
+          ./experimental/libbox
       - name: Race test Etonify runtime paths
-        run: go test -race ./common/urltest ./daemon ./experimental/libbox ./protocol/vless/... ./transport/v2rayxhttp
+        run: >-
+          go test -race
+          ./common/interrupt
+          ./common/urltest
+          ./daemon
+          ./experimental/libbox
+          ./protocol/group
+          ./protocol/vless/...
+          ./transport/v2rayxhttp
+      - name: Race test QUIC runtime paths
+        run: go test -race -tags with_quic ./dns/transport/quic ./transport/v2rayquic
+      - name: Resource and performance gate
+        run: bash release/verify_etonify_performance.sh
 
   android:
     name: Build verified Android AAR
