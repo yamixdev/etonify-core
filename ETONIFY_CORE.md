@@ -112,3 +112,34 @@ Mobile resource limits are part of the capability contract:
 The capability document reports the exact profile and limits. New Xray XHTTP
 extensions must stay disabled until they have their own compatibility and
 resource regression tests.
+
+## Opt-in VLESS post-quantum encryption
+
+VLESS outbounds accept the Xray-compatible `encryption` string for
+`mlkem768x25519plus`. The default (`""` or `"none"`) continues to use the
+upstream `sing-vmess` client unchanged, so existing subscriptions do not create
+encryption state or pay a runtime memory cost.
+
+The wire format follows the upstream Xray implementation in
+<https://github.com/XTLS/Xray-core/tree/main/proxy/vless/encryption> without
+vendoring Xray or replacing the `sing-vmess` module.
+
+The mobile implementation is outbound-only and supports:
+
+- `1rtt` and cached `0rtt` handshakes;
+- `native`, `xorpub`, and `random` wire modes;
+- X25519 and ML-KEM-768 relay public keys;
+- AES-GCM on supported hardware and ChaCha20-Poly1305 elsewhere;
+- TCP, UDP, XUDP, Vision, and the configured V2Ray client transport. Vision
+  remains above the encrypted record layer and cannot bypass it.
+
+Resource and failure bounds are part of the contract: at most eight relay
+keys, a 16 KiB configuration string, 16 padding segments, five seconds per
+padding gap, ten seconds across all configured gaps, and a 12-second handshake
+deadline. Cancellation closes transports that cannot implement native
+deadlines. The core does not include a VLESS encryption inbound/server.
+
+Interoperability coverage performs real client/server exchanges for every wire
+mode with both AEAD choices, X25519 and ML-KEM relay keys, cached 0-RTT,
+concurrent ticket use, cancellation, and corrupted/invalid configuration. The
+race suite must pass before this capability is published in an Android AAR.

@@ -40,6 +40,11 @@ func TestEtonifyCapabilities(t *testing.T) {
 	require.Equal(t, 16, capabilities.XHTTPMaxPoolConnections)
 	require.Equal(t, 256*1024, capabilities.XHTTPMaxPacketUploadBytes)
 	require.True(t, capabilities.SupportsXHTTPCloseAll)
+	require.True(t, capabilities.SupportsVLESSEncryption)
+	require.True(t, capabilities.VLESSEncryptionClientOnly)
+	require.Equal(t, []string{"1rtt", "0rtt", "native", "xorpub", "random", "x25519", "mlkem768"}, capabilities.VLESSEncryptionModes)
+	require.Equal(t, 8, capabilities.VLESSEncryptionMaxRelays)
+	require.Equal(t, 12_000, capabilities.VLESSEncryptionHandshakeTimeoutMS)
 	require.Equal(t, []string{"system", "gvisor", "mixed"}, capabilities.TUNStacks)
 	require.Equal(t, content, EtonifyCapabilities())
 }

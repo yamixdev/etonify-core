@@ -57,6 +57,8 @@ jobs:
         run: bash release/verify_etonify_baseline.sh
       - name: Test
         run: go test ./...
+      - name: Race test Etonify runtime paths
+        run: go test -race ./common/urltest ./daemon ./experimental/libbox ./protocol/vless/... ./transport/v2rayxhttp
 
   android:
     name: Build verified Android AAR
