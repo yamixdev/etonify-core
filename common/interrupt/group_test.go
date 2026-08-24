@@ -12,6 +12,18 @@ type closeBarrierConn struct {
 	barrier *sync.WaitGroup
 }
 
+type reentrantCloseConn struct {
+	net.Conn
+	group *Group
+}
+
+func (c *reentrantCloseConn) Close() error {
+	probe, peer := net.Pipe()
+	_ = c.group.NewConn(probe, true).Close()
+	_ = peer.Close()
+	return c.Conn.Close()
+}
+
 func (c *closeBarrierConn) Close() error {
 	c.barrier.Done()
 	c.barrier.Wait()
@@ -62,5 +74,24 @@ func TestNestedGroupsInterruptWithoutDeadlock(t *testing.T) {
 		case <-timeout.C:
 			t.Fatal("nested group interrupt deadlocked")
 		}
+	}
+}
+
+func TestWrappedConnectionCloseDoesNotHoldGroupLock(t *testing.T) {
+	group := NewGroup()
+	connection, peer := net.Pipe()
+	t.Cleanup(func() { _ = peer.Close() })
+	wrapped := group.NewConn(&reentrantCloseConn{Conn: connection, group: group}, true)
+
+	done := make(chan error, 1)
+	go func() { done <- wrapped.Close() }()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("wrapped connection close deadlocked while re-entering the group")
 	}
 }

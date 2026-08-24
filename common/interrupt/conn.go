@@ -4,6 +4,7 @@ import (
 	"net"
 
 	"github.com/sagernet/sing/common/bufio"
+	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/x/list"
 )
 
@@ -29,8 +30,8 @@ type Conn struct {
 
 func (c *Conn) Close() error {
 	c.group.access.Lock()
-	defer c.group.access.Unlock()
 	c.group.connections.Remove(c.element)
+	c.group.access.Unlock()
 	return c.Conn.Close()
 }
 
@@ -58,8 +59,8 @@ type PacketConn struct {
 
 func (c *PacketConn) Close() error {
 	c.group.access.Lock()
-	defer c.group.access.Unlock()
 	c.group.connections.Remove(c.element)
+	c.group.access.Unlock()
 	return c.PacketConn.Close()
 }
 
@@ -73,4 +74,30 @@ func (c *PacketConn) WriterReplaceable() bool {
 
 func (c *PacketConn) Upstream() any {
 	return bufio.NewPacketConn(c.PacketConn)
+}
+
+// SingPacketConn is the interrupt-aware variant for sing's packet interface.
+type SingPacketConn struct {
+	N.PacketConn
+	group   *Group
+	element *list.Element[*groupConnItem]
+}
+
+func (c *SingPacketConn) Close() error {
+	c.group.access.Lock()
+	c.group.connections.Remove(c.element)
+	c.group.access.Unlock()
+	return c.PacketConn.Close()
+}
+
+func (c *SingPacketConn) ReaderReplaceable() bool {
+	return true
+}
+
+func (c *SingPacketConn) WriterReplaceable() bool {
+	return true
+}
+
+func (c *SingPacketConn) Upstream() any {
+	return c.PacketConn
 }

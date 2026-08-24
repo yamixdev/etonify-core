@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"net/netip"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -38,14 +39,16 @@ func RegisterEndpoint(registry *endpoint.Registry) {
 
 type Endpoint struct {
 	endpoint.Adapter
-	ctx            context.Context
-	router         adapter.Router
-	dnsRouter      adapter.DNSRouter
-	logger         logger.ContextLogger
-	localAddresses []netip.Prefix
-	endpoint       *wireguard.Endpoint
-	bindAccess     sync.Mutex
-	started        atomic.Bool
+	ctx             context.Context
+	router          adapter.Router
+	dnsRouter       adapter.DNSRouter
+	logger          logger.ContextLogger
+	localAddresses  []netip.Prefix
+	endpoint        *wireguard.Endpoint
+	bindAccess      sync.Mutex
+	lifecycleAccess sync.Mutex
+	started         atomic.Bool
+	closing         atomic.Bool
 }
 
 func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.WireGuardEndpointOptions) (adapter.Endpoint, error) {
@@ -135,6 +138,14 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 }
 
 func (w *Endpoint) Start(stage adapter.StartStage) error {
+	// A user stop may arrive while the endpoint manager is still starting.
+	// Keep each transport start stage atomic with respect to Close so the
+	// underlying TUN device cannot be torn down underneath Start.
+	w.lifecycleAccess.Lock()
+	defer w.lifecycleAccess.Unlock()
+	if w.closing.Load() {
+		return os.ErrClosed
+	}
 	switch stage {
 	case adapter.StartStateStart:
 		return w.endpoint.Start(false)
@@ -149,10 +160,19 @@ func (w *Endpoint) Start(stage adapter.StartStage) error {
 }
 
 func (w *Endpoint) Close() error {
+	if !w.beginClose() {
+		return os.ErrClosed
+	}
+	w.lifecycleAccess.Lock()
+	defer w.lifecycleAccess.Unlock()
 	w.bindAccess.Lock()
 	w.started.Store(false)
 	w.bindAccess.Unlock()
 	return w.endpoint.Close()
+}
+
+func (w *Endpoint) beginClose() bool {
+	return w.closing.CompareAndSwap(false, true)
 }
 
 func (w *Endpoint) InterfaceUpdated(ctx context.Context) {

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"runtime/debug"
+	"sync/atomic"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -62,6 +63,7 @@ type Box struct {
 	httpClientService   adapter.LifecycleService
 	internalService     []adapter.LifecycleService
 	done                chan struct{}
+	closed              atomic.Bool
 }
 
 type Options struct {
@@ -599,12 +601,12 @@ func (s *Box) start() error {
 }
 
 func (s *Box) Close() error {
-	select {
-	case <-s.done:
+	// Close can race with the error path of Start. Elect one owner before
+	// touching the done channel or any lifecycle service.
+	if !s.beginClose() {
 		return os.ErrClosed
-	default:
-		close(s.done)
 	}
+	close(s.done)
 	var err error
 	if s.debugHTTPServer != nil {
 		err = E.Append(err, s.debugHTTPServer.Close(), func(err error) error {
@@ -654,6 +656,10 @@ func (s *Box) Close() error {
 	})
 	done()
 	return err
+}
+
+func (s *Box) beginClose() bool {
+	return s.closed.CompareAndSwap(false, true)
 }
 
 func (s *Box) Network() adapter.NetworkManager {
