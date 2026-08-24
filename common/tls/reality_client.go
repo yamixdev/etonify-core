@@ -49,6 +49,7 @@ type RealityClientConfig struct {
 	uClient   *UTLSClientConfig
 	publicKey []byte
 	shortID   [8]byte
+	spiderX   string
 }
 
 // IsReality reports the transport profile without exposing Reality internals.
@@ -91,7 +92,13 @@ func newRealityClient(ctx context.Context, logger logger.ContextLogger, serverAd
 		return nil, E.New("invalid short_id")
 	}
 
-	var config Config = &RealityClientConfig{ctx, uClient.(*UTLSClientConfig), publicKey, shortID}
+	var config Config = &RealityClientConfig{
+		ctx:       ctx,
+		uClient:   uClient.(*UTLSClientConfig),
+		publicKey: publicKey,
+		shortID:   shortID,
+		spiderX:   options.Reality.SpiderX,
+	}
 	if options.KernelRx || options.KernelTx {
 		if !C.IsLinux {
 			return nil, E.New("kTLS is only supported on Linux")
@@ -241,14 +248,14 @@ func (e *RealityClientConfig) ClientHandshake(ctx context.Context, conn net.Conn
 	}
 
 	if !verifier.verified {
-		go realityClientFallback(e.ctx, uConn, e.uClient.ServerName(), e.uClient.id)
+		go realityClientFallback(e.ctx, uConn, e.uClient.ServerName(), e.uClient.id, e.spiderX)
 		return nil, E.New("reality verification failed")
 	}
 
 	return &realityClientConnWrapper{uConn}, nil
 }
 
-func realityClientFallback(ctx context.Context, uConn net.Conn, serverName string, fingerprint utls.ClientHelloID) {
+func realityClientFallback(ctx context.Context, uConn net.Conn, serverName string, fingerprint utls.ClientHelloID, spiderX string) {
 	defer uConn.Close()
 	client := &http.Client{
 		Transport: &http2.Transport{
@@ -261,7 +268,7 @@ func realityClientFallback(ctx context.Context, uConn net.Conn, serverName strin
 			},
 		},
 	}
-	request, _ := http.NewRequest("GET", "https://"+serverName, nil)
+	request, _ := http.NewRequest("GET", realityClientFallbackURL(serverName, spiderX), nil)
 	request.Header.Set("User-Agent", fingerprint.Client)
 	request.AddCookie(&http.Cookie{Name: "padding", Value: strings.Repeat("0", mRand.Intn(32)+30)})
 	response, err := client.Do(request)
@@ -272,12 +279,24 @@ func realityClientFallback(ctx context.Context, uConn net.Conn, serverName strin
 	response.Body.Close()
 }
 
+func realityClientFallbackURL(serverName string, spiderX string) string {
+	requestURL := "https://" + serverName
+	if spiderX == "" {
+		return requestURL
+	}
+	if strings.HasPrefix(spiderX, "/") || strings.HasPrefix(spiderX, "?") {
+		return requestURL + spiderX
+	}
+	return requestURL + "/" + spiderX
+}
+
 func (e *RealityClientConfig) Clone() Config {
 	return &RealityClientConfig{
-		e.ctx,
-		e.uClient.Clone().(*UTLSClientConfig),
-		e.publicKey,
-		e.shortID,
+		ctx:       e.ctx,
+		uClient:   e.uClient.Clone().(*UTLSClientConfig),
+		publicKey: e.publicKey,
+		shortID:   e.shortID,
+		spiderX:   e.spiderX,
 	}
 }
 

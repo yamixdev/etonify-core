@@ -32,6 +32,7 @@ func TestEtonifyCapabilities(t *testing.T) {
 	require.Equal(t, "group_events", capabilities.URLTestCompletionModel)
 	require.True(t, capabilities.SupportsConfigCheck)
 	require.True(t, capabilities.SupportsCloseConnections)
+	require.True(t, capabilities.SupportsRealitySpiderX)
 	require.True(t, capabilities.SupportsXHTTP)
 	require.True(t, capabilities.SupportsSplitHTTPAlias)
 	require.True(t, capabilities.XHTTPClientOnly)
