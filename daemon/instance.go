@@ -30,6 +30,7 @@ type Instance struct {
 	cacheFile             adapter.CacheFile
 	pauseManager          pause.Manager
 	urlTestHistoryStorage *urltest.HistoryStorage
+	externalInfoResolver  *outboundExternalInfoResolver
 	outboundManager       adapter.OutboundManager
 	endpointManager       adapter.EndpointManager
 	logFactory            log.Factory
@@ -118,6 +119,7 @@ func (s *StartedService) newInstance(ctx context.Context, profileContent string,
 		ctx:                   ctx,
 		cancel:                cancel,
 		urlTestHistoryStorage: urlTestHistoryStorage,
+		externalInfoResolver:  newOutboundExternalInfoResolver(),
 	}
 	boxInstance, err := box.New(box.Options{
 		Context:           ctx,

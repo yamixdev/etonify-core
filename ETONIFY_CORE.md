@@ -72,3 +72,11 @@ it can replace the bundled AAR.
 fall back to the bundled legacy capability set when the method is absent or the
 document is malformed. A capability may be enabled only in the same commit as
 its implementation and regression coverage.
+
+The first Etonify runtime extension on the 1.14 base provides managed URLTest
+sessions and outbound external-address lookup. URLTest requests may target one
+member or a complete group, bound per-probe and whole-session deadlines, limit
+parallel work, replace stale forced sessions, and report a stable error code to
+the client. External-address lookups use the selected concrete outbound,
+bounded response sizes, a second provider, request coalescing, and a short
+stale cache so a transient provider failure does not blank already known data.

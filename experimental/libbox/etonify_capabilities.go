@@ -36,12 +36,20 @@ type etonifyCapabilitySet struct {
 // must treat a missing or malformed response as the legacy capability set.
 func EtonifyCapabilities() string {
 	capabilities := etonifyCapabilitySet{
-		APIVersion:               etonifyAPIVersion,
-		CoreVersion:              C.Version,
-		URLTestCompletionModel:   "group_events",
-		SupportsConfigCheck:      true,
-		SupportsCloseConnections: true,
-		TUNStacks:                []string{"system", "gvisor", "mixed"},
+		APIVersion:                    etonifyAPIVersion,
+		CoreVersion:                   C.Version,
+		SupportsTargetedURLTest:       true,
+		SupportsGroupURLTestSessions:  true,
+		SupportsStructuredProbeErrors: true,
+		SupportsOutboundExternalInfo:  true,
+		SupportsURLTestTimeout:        true,
+		SupportsURLTestConcurrency:    true,
+		SupportsURLTestDeadline:       true,
+		SupportsURLTestForce:          true,
+		URLTestCompletionModel:        "group_events",
+		SupportsConfigCheck:           true,
+		SupportsCloseConnections:      true,
+		TUNStacks:                     []string{"system", "gvisor", "mixed"},
 	}
 	content, err := json.Marshal(capabilities)
 	if err != nil {
