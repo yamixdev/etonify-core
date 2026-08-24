@@ -6,7 +6,10 @@ import (
 	C "github.com/sagernet/sing-box/constant"
 )
 
-const etonifyAPIVersion = 1
+// API v2 makes the detailed XHTTP and VLESS Encryption limits part of the
+// mobile integration contract. Clients must not infer these limits from the
+// coarse supports_* flags.
+const etonifyAPIVersion = 2
 
 type etonifyCapabilitySet struct {
 	APIVersion                              int      `json:"api_version"`
