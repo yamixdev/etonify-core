@@ -20,6 +20,7 @@ type etonifyCapabilitySet struct {
 	SupportsURLTestConcurrency              bool     `json:"supports_url_test_concurrency"`
 	SupportsURLTestDeadline                 bool     `json:"supports_url_test_deadline"`
 	SupportsURLTestForce                    bool     `json:"supports_url_test_force"`
+	SupportsURLTestFailover                 bool     `json:"supports_url_test_failover"`
 	SupportsURLTestUnavailableCheckInterval bool     `json:"supports_url_test_unavailable_check_interval"`
 	SupportsURLTestMethod                   bool     `json:"supports_url_test_method"`
 	SupportsURLTestInterruptDelayThreshold  bool     `json:"supports_url_test_interrupt_delay_threshold"`
@@ -46,6 +47,7 @@ func EtonifyCapabilities() string {
 		SupportsURLTestConcurrency:    true,
 		SupportsURLTestDeadline:       true,
 		SupportsURLTestForce:          true,
+		SupportsURLTestFailover:       true,
 		URLTestCompletionModel:        "group_events",
 		SupportsConfigCheck:           true,
 		SupportsCloseConnections:      true,

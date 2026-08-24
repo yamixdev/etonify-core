@@ -25,6 +25,7 @@ func TestEtonifyCapabilities(t *testing.T) {
 	require.True(t, capabilities.SupportsURLTestConcurrency)
 	require.True(t, capabilities.SupportsURLTestDeadline)
 	require.True(t, capabilities.SupportsURLTestForce)
+	require.True(t, capabilities.SupportsURLTestFailover)
 	require.False(t, capabilities.SupportsURLTestUnavailableCheckInterval)
 	require.False(t, capabilities.SupportsURLTestMethod)
 	require.False(t, capabilities.SupportsURLTestInterruptDelayThreshold)

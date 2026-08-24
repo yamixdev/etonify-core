@@ -191,6 +191,12 @@ type URLTestGroup interface {
 	PerformUpdateCheck()
 }
 
+// URLTestSelectionRefresher lets managed probe sessions recalculate a URLTest
+// group's selected outbound without starting a second set of network probes.
+type URLTestSelectionRefresher interface {
+	RefreshURLTestSelection()
+}
+
 func OutboundTag(detour Outbound) string {
 	if group, isGroup := detour.(OutboundGroup); isGroup {
 		return group.Now()
