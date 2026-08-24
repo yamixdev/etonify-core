@@ -14,7 +14,7 @@ legacy core wholesale.
 | Upstream commit | `8dd67a1e49711ce8a9a884bef60a2139ef36446f` |
 | Exact release tag | `v1.14.0-rc.1` |
 | Go toolchain used by upstream Android CI | `1.26.6` |
-| gomobile / gobind | `v0.1.12` |
+| gomobile / gobind | `v0.1.13` |
 | Android NDK | `r28` |
 | OpenJDK | `17` |
 | Main libbox Android API | `24` |
@@ -45,8 +45,15 @@ make lib_android
 ```
 
 The build produces `libbox.aar` and `libbox-legacy.aar` in the repository root.
-Etonify consumes only the main `libbox.aar`; the legacy artifact is retained at
-this stage only because the unmodified upstream build command produces it.
+It also emits matching generated Java source JARs. Etonify consumes only
+`libbox.aar` and `libbox-sources.jar`; the legacy artifacts are retained at this
+stage only because the unmodified upstream build command produces them.
+
+The `Etonify libbox` workflow runs the complete Go package suite on Linux,
+builds with pinned tools, and uploads the main AAR together with its source JAR,
+SHA-256, source archive, and build provenance. A workflow artifact is not a
+release: it must still pass the client migration and device test matrix before
+it can replace the bundled AAR.
 
 ## Fork policy
 

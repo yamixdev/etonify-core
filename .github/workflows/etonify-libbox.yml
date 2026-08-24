@@ -1,0 +1,131 @@
+name: Etonify libbox
+
+on:
+  push:
+    branches:
+      - etonify-dev
+      - update/upstream-v1.14.0-rc1
+    paths:
+      - '.github/workflows/etonify-libbox.yml'
+      - 'adapter/**'
+      - 'cmd/**'
+      - 'common/**'
+      - 'constant/**'
+      - 'daemon/**'
+      - 'dns/**'
+      - 'experimental/libbox/**'
+      - 'log/**'
+      - 'option/**'
+      - 'protocol/**'
+      - 'release/**'
+      - 'route/**'
+      - 'service/**'
+      - 'transport/**'
+      - 'box.go'
+      - 'debug*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Makefile'
+  pull_request:
+    branches:
+      - etonify-dev
+      - update/upstream-v1.14.0-rc1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: etonify-libbox-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Go tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          fetch-depth: 0
+      - name: Setup Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: '1.26.6'
+          cache: true
+      - name: Verify baseline
+        run: bash release/verify_etonify_baseline.sh
+      - name: Test
+        run: go test ./...
+
+  android:
+    name: Build verified Android AAR
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          fetch-depth: 0
+      - name: Setup Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: '1.26.6'
+          cache: true
+      - name: Setup OpenJDK
+        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Setup Android NDK
+        id: setup-ndk
+        uses: nttld/setup-ndk@ed92fe6cadad69be94a966a7ee3271275e62f779 # v1.6.0
+        with:
+          ndk-version: r28
+      - name: Verify baseline
+        run: bash release/verify_etonify_baseline.sh
+      - name: Install pinned gomobile
+        run: make lib_install
+      - name: Build libbox
+        run: |
+          export SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
+          make lib_android
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+      - name: Prepare provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          source release/ETONIFY_BASELINE
+          test -f libbox.aar
+          test -f libbox-sources.jar
+          mkdir -p dist
+          cp libbox.aar libbox-sources.jar dist/
+          sha256sum libbox.aar > dist/libbox.aar.sha256
+          git archive --format=tar HEAD | gzip -n > dist/etonify-core-source.tar.gz
+          commit="$(git rev-parse HEAD)"
+          version="$(git describe --tags --always --dirty)"
+          go_actual="$(go version)"
+          java_actual="$(java --version 2>&1 | head -n 1)"
+          cat > dist/provenance.json <<EOF
+          {
+            "artifact": "libbox.aar",
+            "sha256": "$(sha256sum libbox.aar | awk '{print $1}')",
+            "source_commit": "${commit}",
+            "source_version": "${version}",
+            "upstream_commit": "${UPSTREAM_COMMIT}",
+            "go": "${go_actual}",
+            "gomobile": "${GOMOBILE_VERSION}",
+            "java": "${java_actual}",
+            "android_ndk": "${ANDROID_NDK_VERSION}",
+            "android_api": ${LIBBOX_ANDROID_API},
+            "build_tags": "${LIBBOX_BUILD_TAGS}"
+          }
+          EOF
+      - name: Upload libbox artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: etonify-libbox-${{ github.sha }}
+          path: dist
+          if-no-files-found: error
+          retention-days: 14
