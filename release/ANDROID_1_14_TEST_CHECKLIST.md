@@ -22,6 +22,8 @@ same device.
 
 ## Protocol and configuration corpus
 
+- [ ] CI builds the Android AAR with `with_naive_outbound`; do not substitute
+      the platform-specific Android Cronet link with a Linux Cronet test.
 - [ ] VLESS TLS, Reality/Vision, XHTTP/SplitHTTP and Encryption.
 - [ ] VMess WS/gRPC/HTTPUpgrade, Trojan and Shadowsocks.
 - [ ] Hysteria2, TUIC, AnyTLS and Naive.

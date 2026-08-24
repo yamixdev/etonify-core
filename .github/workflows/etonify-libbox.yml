@@ -63,8 +63,8 @@ jobs:
       - name: Validate Android configuration corpus
         run: >-
           go test
-          -tags "with_gvisor,with_quic,with_wireguard,with_utls,with_naive_outbound"
-          -run 'TestEtonify(AndroidConfigCorpus|NaiveConfigCompatibility)'
+          -tags "with_gvisor,with_quic,with_wireguard,with_utls"
+          -run 'TestEtonify(AndroidConfigCorpus|NaiveConfigSchema)'
           ./experimental/libbox
       - name: Race test Etonify runtime paths
         run: >-
