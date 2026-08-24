@@ -35,6 +35,11 @@ type etonifyCapabilitySet struct {
 	XHTTPMaxPoolConnections                 int      `json:"xhttp_max_pool_connections"`
 	XHTTPMaxPacketUploadBytes               int      `json:"xhttp_max_packet_upload_bytes"`
 	SupportsXHTTPCloseAll                   bool     `json:"supports_xhttp_close_all"`
+	SupportsVLESSEncryption                 bool     `json:"supports_vless_encryption"`
+	VLESSEncryptionClientOnly               bool     `json:"vless_encryption_client_only"`
+	VLESSEncryptionModes                    []string `json:"vless_encryption_modes"`
+	VLESSEncryptionMaxRelays                int      `json:"vless_encryption_max_relays"`
+	VLESSEncryptionHandshakeTimeoutMS       int      `json:"vless_encryption_handshake_timeout_ms"`
 	TUNStacks                               []string `json:"tun_stacks"`
 }
 
@@ -45,29 +50,34 @@ type etonifyCapabilitySet struct {
 // must treat a missing or malformed response as the legacy capability set.
 func EtonifyCapabilities() string {
 	capabilities := etonifyCapabilitySet{
-		APIVersion:                    etonifyAPIVersion,
-		CoreVersion:                   C.Version,
-		SupportsTargetedURLTest:       true,
-		SupportsGroupURLTestSessions:  true,
-		SupportsStructuredProbeErrors: true,
-		SupportsOutboundExternalInfo:  true,
-		SupportsURLTestTimeout:        true,
-		SupportsURLTestConcurrency:    true,
-		SupportsURLTestDeadline:       true,
-		SupportsURLTestForce:          true,
-		SupportsURLTestFailover:       true,
-		URLTestCompletionModel:        "group_events",
-		SupportsConfigCheck:           true,
-		SupportsCloseConnections:      true,
-		SupportsXHTTP:                 true,
-		SupportsSplitHTTPAlias:        true,
-		XHTTPClientOnly:               true,
-		XHTTPProfile:                  "etonify_client_v1",
-		XHTTPModes:                    []string{"packet-up", "stream-up", "stream-one"},
-		XHTTPMaxPoolConnections:       16,
-		XHTTPMaxPacketUploadBytes:     256 * 1024,
-		SupportsXHTTPCloseAll:         true,
-		TUNStacks:                     []string{"system", "gvisor", "mixed"},
+		APIVersion:                        etonifyAPIVersion,
+		CoreVersion:                       C.Version,
+		SupportsTargetedURLTest:           true,
+		SupportsGroupURLTestSessions:      true,
+		SupportsStructuredProbeErrors:     true,
+		SupportsOutboundExternalInfo:      true,
+		SupportsURLTestTimeout:            true,
+		SupportsURLTestConcurrency:        true,
+		SupportsURLTestDeadline:           true,
+		SupportsURLTestForce:              true,
+		SupportsURLTestFailover:           true,
+		URLTestCompletionModel:            "group_events",
+		SupportsConfigCheck:               true,
+		SupportsCloseConnections:          true,
+		SupportsXHTTP:                     true,
+		SupportsSplitHTTPAlias:            true,
+		XHTTPClientOnly:                   true,
+		XHTTPProfile:                      "etonify_client_v1",
+		XHTTPModes:                        []string{"packet-up", "stream-up", "stream-one"},
+		XHTTPMaxPoolConnections:           16,
+		XHTTPMaxPacketUploadBytes:         256 * 1024,
+		SupportsXHTTPCloseAll:             true,
+		SupportsVLESSEncryption:           true,
+		VLESSEncryptionClientOnly:         true,
+		VLESSEncryptionModes:              []string{"1rtt", "0rtt", "native", "xorpub", "random", "x25519", "mlkem768"},
+		VLESSEncryptionMaxRelays:          8,
+		VLESSEncryptionHandshakeTimeoutMS: 12_000,
+		TUNStacks:                         []string{"system", "gvisor", "mixed"},
 	}
 	content, err := json.Marshal(capabilities)
 	if err != nil {
