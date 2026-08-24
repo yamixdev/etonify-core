@@ -8,10 +8,13 @@ This is an Android integration build for testing Etonify with the sing-box `1.14
 - Versioned Etonify capabilities so the client enables only features implemented by this core.
 - Targeted and group URLTest with bounded parallelism, cancellation, structured errors and failover.
 - External IP and country lookup through the selected outbound.
+- Bounded subscription and resource downloads through the selected outbound.
 - Reset-safe bounded XHTTP/SplitHTTP transport for network changes.
 - Optional VLESS Encryption with Vision compatibility.
 - Reality `spider_x` fallback support.
 - Deterministic runtime shutdown and file-descriptor ownership fixes.
+- Selector connection interruption and WireGuard start/stop race protection.
+- Android libbox no longer bundles unused Tailscale functionality.
 
 ### Automated verification
 
