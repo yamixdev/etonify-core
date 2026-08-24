@@ -163,9 +163,20 @@ func (i *Instance) Start() error {
 }
 
 func (i *Instance) Close() error {
-	i.cancel()
-	i.urlTestHistoryStorage.Close()
-	return i.instance.Close()
+	return closeInstance(
+		i.urlTestHistoryStorage.Close,
+		i.instance.Close,
+		i.cancel,
+	)
+}
+
+func closeInstance(closeHistory func() error, closeRuntime func() error, cancel context.CancelFunc) error {
+	// Closing the parent context can wake a pending gVisor handshake while the
+	// TUN stack is still tearing down. Stop the runtime first, then publish the
+	// terminal cancellation after every runtime-owned resource is closed.
+	defer cancel()
+	_ = closeHistory()
+	return closeRuntime()
 }
 
 func (i *Instance) Box() *box.Box {

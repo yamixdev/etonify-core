@@ -71,6 +71,9 @@ func (w *platformInterfaceWrapper) OpenInterface(options *tun.Options, platformO
 	if err != nil {
 		return nil, err
 	}
+	defer func(fd int) {
+		_ = closeFd(fd)
+	}(int(tunFd))
 	options.Name, err = getTunnelName(tunFd)
 	if err != nil {
 		return nil, E.Cause(err, "query tun name")
