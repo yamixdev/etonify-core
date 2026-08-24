@@ -56,9 +56,15 @@ var (
 func init() {
 	sharedFlags = append(sharedFlags, "-trimpath")
 	sharedFlags = append(sharedFlags, "-buildvcs=false")
-	currentTag, err := build_shared.ReadTag()
+	currentTag, hasEtonifyVersion, err := readEtonifyVersion("release/ETONIFY_VERSION")
 	if err != nil {
-		currentTag = "unknown"
+		log.Fatal(E.Cause(err, "read Etonify version"))
+	}
+	if !hasEtonifyVersion {
+		currentTag, err = build_shared.ReadTag()
+		if err != nil {
+			currentTag = "unknown"
+		}
 	}
 	sharedFlags = append(sharedFlags, "-ldflags", build_shared.LinkerFlags(currentTag, false))
 	debugFlags = append(debugFlags, "-ldflags", build_shared.LinkerFlags(currentTag, true))
@@ -69,6 +75,26 @@ func init() {
 	sharedTags = append(sharedTags, "with_tailscale", "ts_omit_logtail", "ts_omit_ssh", "ts_omit_drive", "ts_omit_taildrop", "ts_omit_webclient", "ts_omit_doctor", "ts_omit_capture", "ts_omit_kube", "ts_omit_aws", "ts_omit_synology", "ts_omit_bird")
 	notMemcTags = append(notMemcTags, "with_low_memory")
 	debugTags = append(debugTags, "debug")
+}
+
+func readEtonifyVersion(path string) (string, bool, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+	version := strings.TrimSpace(string(content))
+	if version == "" {
+		return "", true, E.New("empty Etonify version")
+	}
+	if strings.IndexFunc(version, func(character rune) bool {
+		return character == '\r' || character == '\n' || character == '\t' || character == ' '
+	}) >= 0 {
+		return "", true, E.New("invalid whitespace in Etonify version")
+	}
+	return strings.TrimPrefix(version, "v"), true, nil
 }
 
 type AndroidBuildConfig struct {
