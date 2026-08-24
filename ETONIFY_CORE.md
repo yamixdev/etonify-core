@@ -65,3 +65,10 @@ it can replace the bundled AAR.
 - Do not publish an AAR without its source commit, build inputs, and SHA-256.
 - Do not replace the client AAR until the client migration and rollback tests
   pass against an in-place upgrade from the current Etonify release.
+
+## Mobile capability contract
+
+`libbox.EtonifyCapabilities()` returns a versioned JSON document. Clients must
+fall back to the bundled legacy capability set when the method is absent or the
+document is malformed. A capability may be enabled only in the same commit as
+its implementation and regression coverage.
