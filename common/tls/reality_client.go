@@ -51,6 +51,13 @@ type RealityClientConfig struct {
 	shortID   [8]byte
 }
 
+// IsReality reports the transport profile without exposing Reality internals.
+// Optional transports can use this marker while remaining buildable without
+// the with_utls tag.
+func (e *RealityClientConfig) IsReality() bool {
+	return true
+}
+
 func NewRealityClient(ctx context.Context, logger logger.ContextLogger, serverAddress string, options option.OutboundTLSOptions) (Config, error) {
 	return newRealityClient(ctx, logger, serverAddress, options, false)
 }

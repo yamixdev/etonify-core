@@ -85,3 +85,30 @@ Managed probe sessions also refresh URLTest selections after their final
 result. Failed real dials invalidate only the affected outbound and immediately
 recalculate the group from known healthy history; unavailable/error-only
 entries can no longer win simply because they contain a history timestamp.
+
+## Mobile XHTTP client profile
+
+The mobile core accepts `xhttp` and the legacy `splithttp` alias for outbound
+V2Ray transports. The implementation is deliberately client-only and supports
+`packet-up`, `stream-up`, and `stream-one`; it does not add an inbound XHTTP
+server or HTTP/3 transport to the Android library. In `auto` mode Reality uses
+`stream-one`, regular TLS/H2 uses `stream-up`, and cleartext HTTP uses
+`packet-up`.
+
+Mobile resource limits are part of the capability contract:
+
+- XMUX has a hard limit of 16 physical HTTP clients. An all-zero XMUX block
+  receives bounded concurrency, request-count, and lifetime defaults instead
+  of creating an unlimited pool.
+- Packet uploads use at most 256 KiB per logical stream and each finite upload
+  request has a 30-second deadline.
+- HTTP/2 health checks use a 30-second mobile default. Explicit keep-alive
+  periods are bounded to 5 seconds through 5 minutes, and `-1` disables them.
+- Client shutdown or network reset cancels active logical streams, closes
+  response bodies, releases XMUX leases, and retires idle HTTP transports.
+  Redirects are rejected so session metadata is never forwarded to another
+  origin.
+
+The capability document reports the exact profile and limits. New Xray XHTTP
+extensions must stay disabled until they have their own compatibility and
+resource regression tests.
