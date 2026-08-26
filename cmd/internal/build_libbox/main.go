@@ -101,6 +101,8 @@ type AndroidBuildConfig struct {
 	Tags       []string
 }
 
+const defaultAndroidBindTarget = "android/arm,android/arm64"
+
 func filterTags(tags []string, exclude ...string) []string {
 	excludeMap := make(map[string]bool)
 	for _, tag := range exclude {
@@ -134,12 +136,16 @@ func checkJavaVersion() {
 }
 
 func getAndroidBindTarget() string {
-	if platform != "" {
-		return platform
-	} else if debugEnabled {
+	return resolveAndroidBindTarget(platform, debugEnabled)
+}
+
+func resolveAndroidBindTarget(explicitTarget string, debug bool) string {
+	if explicitTarget != "" {
+		return explicitTarget
+	} else if debug {
 		return "android/arm64"
 	}
-	return "android"
+	return defaultAndroidBindTarget
 }
 
 func buildAndroidVariant(config AndroidBuildConfig, bindTarget string) {
