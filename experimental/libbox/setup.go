@@ -36,6 +36,7 @@ var (
 	sOOMKillerEnabled        bool
 	sOOMKillerDisabled       bool
 	sOOMMemoryLimit          int64
+	sGoMemoryLimit           int64
 	sPowerReportEnabled      bool
 )
 
@@ -59,6 +60,7 @@ type SetupOptions struct {
 	OomKillerEnabled        bool
 	OomKillerDisabled       bool
 	OomMemoryLimit          int64
+	GoMemoryLimit           int64
 	PowerReportEnabled      bool
 }
 
@@ -88,19 +90,29 @@ func ReloadSetupOptions(options *SetupOptions) {
 	sOOMKillerEnabled = options.OomKillerEnabled
 	sOOMKillerDisabled = options.OomKillerDisabled
 	sOOMMemoryLimit = options.OomMemoryLimit
+	sGoMemoryLimit = options.GoMemoryLimit
 	sPowerReportEnabled = options.PowerReportEnabled
-	if sOOMKillerEnabled {
-		if sOOMMemoryLimit == 0 && C.IsIos {
-			sOOMMemoryLimit = oomkiller.DefaultAppleNetworkExtensionMemoryLimit
-		}
-		if sOOMMemoryLimit > 0 {
-			debug.SetMemoryLimit(sOOMMemoryLimit * 4 / 5)
-		} else {
-			debug.SetMemoryLimit(math.MaxInt64)
-		}
-	} else {
-		debug.SetMemoryLimit(math.MaxInt64)
+	if sOOMKillerEnabled && sOOMMemoryLimit == 0 && C.IsIos {
+		sOOMMemoryLimit = oomkiller.DefaultAppleNetworkExtensionMemoryLimit
 	}
+	debug.SetMemoryLimit(resolveGoMemoryLimit(
+		sGoMemoryLimit,
+		sOOMKillerEnabled,
+		sOOMMemoryLimit,
+	))
+}
+
+func resolveGoMemoryLimit(goMemoryLimit int64, oomKillerEnabled bool, oomMemoryLimit int64) int64 {
+	if goMemoryLimit > 0 {
+		return goMemoryLimit
+	}
+	// Preserve the historical libbox contract for older callers while allowing
+	// new clients to keep Go's soft limit independent from the process-wide OOM
+	// service. The latter measures RSS and must not be fed a Go heap budget.
+	if oomKillerEnabled && oomMemoryLimit > 0 {
+		return oomMemoryLimit * 3 / 4
+	}
+	return math.MaxInt64
 }
 
 func Setup(options *SetupOptions) error {
