@@ -116,6 +116,20 @@ jobs:
           make lib_android
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+      - name: Verify ARM-only AAR
+        shell: bash
+        run: |
+          set -euo pipefail
+          source release/ETONIFY_BASELINE
+          actual_abis="$(unzip -Z1 libbox.aar \
+            | sed -n 's#^jni/\([^/]*\)/libbox\.so$#\1#p' \
+            | sort \
+            | paste -sd, -)"
+          expected_abis="$(tr ',' '\n' <<< "$LIBBOX_ANDROID_ABIS" | sort | paste -sd, -)"
+          if [ "$actual_abis" != "$expected_abis" ]; then
+            echo "::error title=Unexpected libbox ABI set::Expected $expected_abis, got $actual_abis"
+            exit 1
+          fi
       - name: Prepare provenance
         shell: bash
         run: |
@@ -145,6 +159,7 @@ jobs:
             "java": "${java_actual}",
             "android_ndk": "${ANDROID_NDK_VERSION}",
             "android_api": ${LIBBOX_ANDROID_API},
+            "android_abis": ["${LIBBOX_ANDROID_ABIS//,/\", \"}"],
             "build_tags": "${LIBBOX_BUILD_TAGS}"
           }
           EOF

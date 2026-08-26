@@ -22,6 +22,7 @@ git merge-base --is-ancestor "${UPSTREAM_COMMIT}" HEAD
 grep -Fq "github.com/sagernet/gomobile/cmd/gomobile@${GOMOBILE_VERSION}" Makefile
 grep -Fq "github.com/sagernet/gomobile/cmd/gobind@${GOMOBILE_VERSION}" Makefile
 grep -Fq "AndroidAPI: ${LIBBOX_ANDROID_API}" cmd/internal/build_libbox/main.go
+grep -Fq "defaultAndroidBindTarget = \"${LIBBOX_ANDROID_TARGET}\"" cmd/internal/build_libbox/main.go
 for build_tag in ${LIBBOX_BUILD_TAGS//,/ }; do
   grep -Fq "\"${build_tag}\"" cmd/internal/build_libbox/main.go
 done
@@ -39,4 +40,6 @@ printf 'gomobile=%s\n' "${GOMOBILE_VERSION}"
 printf 'ndk=%s\n' "${ANDROID_NDK_VERSION}"
 printf 'java=%s\n' "${JAVA_VERSION}"
 printf 'android_api=%s\n' "${LIBBOX_ANDROID_API}"
+printf 'android_target=%s\n' "${LIBBOX_ANDROID_TARGET}"
+printf 'android_abis=%s\n' "${LIBBOX_ANDROID_ABIS}"
 printf 'build_tags=%s\n' "${LIBBOX_BUILD_TAGS}"
