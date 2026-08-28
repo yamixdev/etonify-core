@@ -1,6 +1,6 @@
 ## Etonify Core 1.14 RC test build
 
-This is an Android integration build for testing Etonify with the sing-box `1.14.0-rc.1` baseline. It is not an APK and is not ready for production use.
+This is an Android integration build for testing Etonify with the sing-box `1.14.0-rc.2` baseline. It is not an APK and is not ready for production use.
 
 ### Included
 
@@ -15,6 +15,9 @@ This is an Android integration build for testing Etonify with the sing-box `1.14
 - Deterministic runtime shutdown and file-descriptor ownership fixes.
 - Selector connection interruption and WireGuard start/stop race protection.
 - Android libbox no longer bundles unused Tailscale functionality.
+- Naive HTTPS/QUIC forwards receive-window settings and closes connections cleanly after a network change.
+- Naive QUIC uses the corrected congestion-control implementation and dependency set from sing-box 1.14.0-rc.2.
+- Non-empty outbound groups remain visible even when they contain only one proxy.
 
 ### Automated verification
 
