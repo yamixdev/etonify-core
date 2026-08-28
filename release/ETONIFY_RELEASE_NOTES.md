@@ -1,6 +1,6 @@
 ## Etonify Core 1.14 RC test build
 
-This is an Android integration build for testing Etonify with the sing-box `1.14.0-rc.2` baseline. It is not an APK and is not ready for production use.
+This is an Android integration build for testing Etonify with the sing-box `1.14.0-rc.1` baseline plus selected fixes backported from `1.14.0-rc.2`. It is not an APK and is not ready for production use.
 
 ### Included
 
