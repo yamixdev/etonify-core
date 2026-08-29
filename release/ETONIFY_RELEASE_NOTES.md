@@ -1,6 +1,6 @@
 ## Etonify Core 1.14 RC test build
 
-This is an Android integration build for testing Etonify with the sing-box `1.14.0-rc.1` baseline plus selected fixes backported from `1.14.0-rc.2`. It is not an APK and is not ready for production use.
+This is an Android integration build for testing Etonify with the sing-box `1.14.0-rc.1` baseline plus selected fixes backported from `1.14.0-rc.2` and `1.14.0-rc.4`. It is not an APK and is not ready for production use.
 
 ### Included
 
@@ -18,6 +18,10 @@ This is an Android integration build for testing Etonify with the sing-box `1.14
 - Naive HTTPS/QUIC forwards receive-window settings and closes connections cleanly after a network change.
 - Naive QUIC uses the corrected congestion-control implementation and dependency set from sing-box 1.14.0-rc.2.
 - Non-empty outbound groups remain visible even when they contain only one proxy.
+- WebSocket early data works correctly with smux and yamux multiplexing.
+- System-stack TCP NAT avoids cross-family port reuse through sing-tun v0.9.0-beta.3.
+- Snell fuses the client handshake with the first payload.
+- HTTP/2 transport reset remains compatible with Go 1.27 while current builds use Go 1.26.7.
 
 ### Automated verification
 
