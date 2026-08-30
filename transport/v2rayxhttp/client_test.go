@@ -266,6 +266,105 @@ func TestPacketUpRoundTripAndClientClose(t *testing.T) {
 	require.ErrorIs(t, err, net.ErrClosed)
 }
 
+func TestClientResetCancelsActiveSessionAndKeepsClientReusable(t *testing.T) {
+	t.Parallel()
+
+	downloadStarted := make(chan struct{}, 2)
+	downloadStopped := make(chan struct{}, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.Method {
+		case http.MethodGet:
+			downloadStarted <- struct{}{}
+			writer.WriteHeader(http.StatusOK)
+			writer.(http.Flusher).Flush()
+			<-request.Context().Done()
+			downloadStopped <- struct{}{}
+		case http.MethodPost:
+			_, _ = io.Copy(io.Discard, request.Body)
+			writer.WriteHeader(http.StatusOK)
+		default:
+			writer.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	defer server.Close()
+
+	parsedURL, err := url.Parse(server.URL)
+	require.NoError(t, err)
+	client, err := NewClient(
+		context.Background(),
+		N.SystemDialer,
+		M.ParseSocksaddr(parsedURL.Host),
+		option.V2RayXHTTPOptions{Path: "/xhttp", Mode: "packet-up"},
+		nil,
+	)
+	require.NoError(t, err)
+	defer client.Close()
+
+	firstConn, err := client.DialContext(context.Background())
+	require.NoError(t, err)
+	select {
+	case <-downloadStarted:
+	case <-time.After(time.Second):
+		t.Fatal("first download request did not start")
+	}
+
+	client.Reset()
+	select {
+	case <-downloadStopped:
+	case <-time.After(time.Second):
+		t.Fatal("reset did not cancel the active download")
+	}
+	_, err = firstConn.Write([]byte("stale"))
+	require.Error(t, err)
+
+	secondConn, err := client.DialContext(context.Background())
+	require.NoError(t, err)
+	select {
+	case <-downloadStarted:
+	case <-time.After(time.Second):
+		t.Fatal("download request did not restart after reset")
+	}
+	require.NoError(t, secondConn.Close())
+}
+
+func TestClientResetReplacesXmuxPool(t *testing.T) {
+	t.Parallel()
+
+	client, err := NewClient(
+		context.Background(),
+		N.SystemDialer,
+		M.ParseSocksaddr("127.0.0.1:80"),
+		option.V2RayXHTTPOptions{
+			Path: "/xhttp",
+			Mode: "packet-up",
+			Xmux: &option.V2RayXHTTPXmuxConfig{
+				MaxConcurrency: &option.V2RayXHTTPRangeConfig{From: 1, To: 1},
+				MaxConnections: &option.V2RayXHTTPRangeConfig{From: 1, To: 1},
+			},
+		},
+		nil,
+	)
+	require.NoError(t, err)
+	defer client.Close()
+
+	firstLease, err := client.getHTTPClient(context.Background())
+	require.NoError(t, err)
+	firstManager := client.xmuxManager
+	require.NotNil(t, firstManager)
+	firstLease.Close()
+
+	client.Reset()
+	firstManager.access.Lock()
+	require.True(t, firstManager.closed)
+	firstManager.access.Unlock()
+	require.Nil(t, client.xmuxManager)
+
+	secondLease, err := client.getHTTPClient(context.Background())
+	require.NoError(t, err)
+	require.NotSame(t, firstManager, client.xmuxManager)
+	secondLease.Close()
+}
+
 type rejectingRoundTripper struct{}
 
 func (rejectingRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {

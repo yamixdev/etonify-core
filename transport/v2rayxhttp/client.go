@@ -35,6 +35,7 @@ const (
 )
 
 var _ adapter.V2RayClientTransport = (*Client)(nil)
+var _ adapter.V2RayClientTransportResetter = (*Client)(nil)
 
 type Client struct {
 	dialer     N.Dialer
@@ -50,6 +51,7 @@ type Client struct {
 	lifecycleCancel  context.CancelFunc
 	stateAccess      sync.Mutex
 	closed           bool
+	generation       uint64
 	sessions         map[*splitConn]struct{}
 	closeOnce        sync.Once
 	closeDone        chan struct{}
@@ -178,6 +180,10 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 	if c.lifecycleContext.Err() != nil {
 		return nil, net.ErrClosed
 	}
+	generation, available := c.beginDial()
+	if !available {
+		return nil, net.ErrClosed
+	}
 	requestContext, cancelRequests := context.WithCancel(ctx)
 	stopLifecycleCancel := context.AfterFunc(c.lifecycleContext, cancelRequests)
 
@@ -217,7 +223,7 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 		httpLease.Close()
 		c.unregister(conn)
 	}
-	if !c.register(conn) {
+	if !c.register(conn, generation) {
 		_ = conn.Close()
 		return nil, net.ErrClosed
 	}
@@ -237,10 +243,19 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 	return conn, nil
 }
 
-func (c *Client) register(conn *splitConn) bool {
+func (c *Client) beginDial() (uint64, bool) {
 	c.stateAccess.Lock()
 	defer c.stateAccess.Unlock()
 	if c.closed {
+		return 0, false
+	}
+	return c.generation, true
+}
+
+func (c *Client) register(conn *splitConn, generation uint64) bool {
+	c.stateAccess.Lock()
+	defer c.stateAccess.Unlock()
+	if c.closed || generation != c.generation {
 		return false
 	}
 	c.sessions[conn] = struct{}{}
@@ -419,6 +434,35 @@ func (c *Client) Close() error {
 	})
 	<-c.closeDone
 	return c.closeErr
+}
+
+// Reset drops every session and pooled HTTP transport that belongs to the
+// previous physical network while keeping the XHTTP client reusable. A dial
+// that started before the reset is rejected by the generation check in
+// register, so a stale Wi-Fi transport cannot become active after handover.
+func (c *Client) Reset() {
+	c.stateAccess.Lock()
+	if c.closed {
+		c.stateAccess.Unlock()
+		return
+	}
+	c.generation++
+	sessions := make([]*splitConn, 0, len(c.sessions))
+	for session := range c.sessions {
+		sessions = append(sessions, session)
+	}
+	c.xmuxAccess.Lock()
+	manager := c.xmuxManager
+	c.xmuxManager = nil
+	c.xmuxAccess.Unlock()
+	c.stateAccess.Unlock()
+
+	for _, session := range sessions {
+		_ = session.Close()
+	}
+	if manager != nil {
+		manager.closeAll()
+	}
 }
 
 func (c *Client) close() error {
