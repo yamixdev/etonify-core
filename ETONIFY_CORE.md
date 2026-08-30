@@ -13,6 +13,7 @@ legacy core wholesale.
 | Upstream branch | `testing` |
 | Upstream commit | `8dd67a1e49711ce8a9a884bef60a2139ef36446f` |
 | Exact release tag | `v1.14.0-rc.1` |
+| Selected backport compatibility | `v1.14.0-rc.5` |
 | Go toolchain used by upstream Android CI | `1.26.7` |
 | gomobile / gobind | `v0.1.13` |
 | Android NDK | `r28` |

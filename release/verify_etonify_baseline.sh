@@ -9,10 +9,11 @@ cd "${repository_root}"
 source release/ETONIFY_BASELINE
 
 etonify_version="$(tr -d '\r\n' < release/ETONIFY_VERSION)"
-etonify_version_prefix="${UPSTREAM_TAG}-etonify."
+etonify_version_tag="${ETONIFY_COMPAT_TAG:-${UPSTREAM_TAG}}"
+etonify_version_prefix="${etonify_version_tag}-etonify."
 etonify_version_suffix="${etonify_version#"${etonify_version_prefix}"}"
 if [[ "${etonify_version}" != "${etonify_version_prefix}"* || ! "${etonify_version_suffix}" =~ ^[0-9]+$ ]]; then
-  printf 'invalid Etonify version: %s (expected %s-etonify.N)\n' "${etonify_version}" "${UPSTREAM_TAG}" >&2
+  printf 'invalid Etonify version: %s (expected %s-etonify.N)\n' "${etonify_version}" "${etonify_version_tag}" >&2
   exit 1
 fi
 
@@ -34,6 +35,7 @@ for excluded_tag in with_usbip with_openvpn with_openconnect; do
 done
 
 printf 'upstream=%s\n' "${UPSTREAM_COMMIT}"
+printf 'compat=%s\n' "${etonify_version_tag}"
 printf 'etonify=%s\n' "${etonify_version}"
 printf 'go=%s\n' "${GO_VERSION}"
 printf 'gomobile=%s\n' "${GOMOBILE_VERSION}"

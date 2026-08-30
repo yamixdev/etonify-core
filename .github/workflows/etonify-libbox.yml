@@ -154,6 +154,7 @@ jobs:
             "source_version": "${version}",
             "etonify_version": "${etonify_version}",
             "upstream_commit": "${UPSTREAM_COMMIT}",
+            "compat_tag": "${ETONIFY_COMPAT_TAG:-${UPSTREAM_TAG}}",
             "go": "${go_actual}",
             "gomobile": "${GOMOBILE_VERSION}",
             "java": "${java_actual}",
