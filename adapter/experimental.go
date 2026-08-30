@@ -196,10 +196,3 @@ type URLTestGroup interface {
 type URLTestSelectionRefresher interface {
 	RefreshURLTestSelection()
 }
-
-func OutboundTag(detour Outbound) string {
-	if group, isGroup := detour.(OutboundGroup); isGroup {
-		return group.Now()
-	}
-	return detour.Tag()
-}
