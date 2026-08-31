@@ -325,7 +325,6 @@ func (g *URLTestGroup) Select(network string) (adapter.Outbound, bool) {
 		if !common.Contains(detour.Network(), network) {
 			continue
 		}
-<<<<<<< HEAD
 		history := g.history.LoadURLTestHistory(RealTag(g.outbound, detour))
 		if !adapter.URLTestHistoryIsAvailable(history) {
 			continue
