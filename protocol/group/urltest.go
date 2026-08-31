@@ -529,6 +529,6 @@ func (g *URLTestGroup) selectedOutbounds() (adapter.Outbound, adapter.Outbound) 
 }
 
 func (g *URLTestGroup) invalidateOutbound(outbound adapter.Outbound) {
-	g.history.DeleteURLTestHistory(RealTag(outbound))
+	g.history.DeleteURLTestHistory(RealTag(g.outbound, outbound))
 	g.performUpdateCheck()
 }

@@ -8,7 +8,7 @@ import (
 
 func TestReadEtonifyVersion(t *testing.T) {
 	versionPath := filepath.Join(t.TempDir(), "ETONIFY_VERSION")
-	if err := os.WriteFile(versionPath, []byte("v1.14.0-rc.1-etonify.0\n"), 0o600); err != nil {
+	if err := os.WriteFile(versionPath, []byte("v1.14.0-etonify.1\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -19,7 +19,7 @@ func TestReadEtonifyVersion(t *testing.T) {
 	if !found {
 		t.Fatal("expected Etonify version file to be detected")
 	}
-	if version != "1.14.0-rc.1-etonify.0" {
+	if version != "1.14.0-etonify.1" {
 		t.Fatalf("unexpected embedded version: %q", version)
 	}
 }
@@ -35,7 +35,7 @@ func TestReadEtonifyVersionMissing(t *testing.T) {
 }
 
 func TestReadEtonifyVersionRejectsInvalidContent(t *testing.T) {
-	for _, content := range []string{"\n", "v1.14.0 rc.1-etonify.0"} {
+	for _, content := range []string{"\n", "v1.14.0 etonify.1"} {
 		t.Run(content, func(t *testing.T) {
 			versionPath := filepath.Join(t.TempDir(), "ETONIFY_VERSION")
 			if err := os.WriteFile(versionPath, []byte(content), 0o600); err != nil {

@@ -1,10 +1,12 @@
-## Etonify Core 1.14 RC test build
+## Etonify Core 1.14 stable base
 
-This is an Android integration build for testing Etonify with the sing-box `1.14.0-rc.1` baseline. It is not an APK and is not ready for production use.
+This Android library is built from the final sing-box `1.14.0` release with Etonify's mobile integration applied on top. It is a core artifact, not an APK. Device validation is still required before it replaces the library bundled with the production application.
 
 ### Included
 
-- Current sing-box 1.14 networking, DNS, routing, TUN, QUIC and Android fixes.
+- The complete sing-box 1.14.0 networking, DNS, routing, TUN, QUIC and Android baseline.
+- Stable 1.14 DNS timeouts, optimistic caching, corrected rule-set matching and network reset behavior.
+- Updated quic-go, gVisor, uTLS, Tailscale and NaiveProxy dependency set from the final upstream release.
 - Versioned Etonify capabilities so the client enables only features implemented by this core.
 - Targeted and group URLTest with bounded parallelism, cancellation, structured errors and failover.
 - External IP and country lookup through the selected outbound.
@@ -13,8 +15,8 @@ This is an Android integration build for testing Etonify with the sing-box `1.14
 - Optional VLESS Encryption with Vision compatibility.
 - Reality `spider_x` fallback support.
 - Deterministic runtime shutdown and file-descriptor ownership fixes.
-- Selector connection interruption and WireGuard start/stop race protection.
-- Android libbox no longer bundles unused Tailscale functionality.
+- Selector connection interruption during outbound changes.
+- Android libbox excludes WireGuard, Tailscale, OpenVPN, OpenConnect and USB/IP features that the Etonify client does not expose.
 
 ### Automated verification
 
