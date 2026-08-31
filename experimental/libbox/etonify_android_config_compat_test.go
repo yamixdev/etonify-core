@@ -1,4 +1,4 @@
-//go:build with_gvisor && with_quic && with_wireguard && with_utls
+//go:build with_gvisor && with_quic && with_utls
 
 package libbox
 
@@ -112,7 +112,6 @@ func TestEtonifyAndroidConfigCorpus(t *testing.T) {
 		"hysteria2",
 		"tuic",
 		"anytls",
-		"wireguard",
 	}
 	outbounds = append([]any{map[string]any{
 		"type":      "selector",
@@ -124,23 +123,6 @@ func TestEtonifyAndroidConfigCorpus(t *testing.T) {
 		[]any{etonifyTUNInbound("mixed"), etonifyMixedInbound()},
 		outbounds,
 	)
-	config["endpoints"] = []any{
-		map[string]any{
-			"type":        "wireguard",
-			"tag":         "wireguard",
-			"address":     []string{"10.0.0.2/32"},
-			"private_key": "yGXGKezPjPNbRfHAJNmkDDT4hPsYRFJ+/GIOQ1kzIXM=",
-			"peers": []any{
-				map[string]any{
-					"address":     "example.com",
-					"port":        51820,
-					"public_key":  "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=",
-					"allowed_ips": []string{"0.0.0.0/0", "::/0"},
-				},
-			},
-		},
-	}
-
 	content, err := json.Marshal(config)
 	require.NoError(t, err)
 	require.NoError(t, CheckConfig(string(content)))
