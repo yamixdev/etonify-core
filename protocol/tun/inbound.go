@@ -328,6 +328,10 @@ func (t *Inbound) Tag() string {
 	return t.tag
 }
 
+func shouldBindTunForwarderToInterface(isDarwin bool, isAndroid bool, hasPlatformInterface bool) bool {
+	return isDarwin || (isAndroid && hasPlatformInterface)
+}
+
 func (t *Inbound) Start(stage adapter.StartStage) error {
 	switch stage {
 	case adapter.StartStateInitialize:
@@ -449,6 +453,14 @@ func (t *Inbound) Start(stage adapter.StartStage) error {
 		if t.platformInterface != nil && t.platformInterface.UnderNetworkExtension() {
 			includeAllNetworks = t.platformInterface.NetworkExtensionIncludeAllNetworks()
 		}
+		// Android libbox uses VpnService to provide the TUN interface. Bind the
+		// system-stack forwarder so it keeps receiving traffic when Android
+		// per-app routing excludes the VPN owner.
+		forwarderBindInterface := shouldBindTunForwarderToInterface(
+			C.IsDarwin,
+			C.IsAndroid,
+			t.platformInterface != nil,
+		)
 		tunStack, err := tun.NewStack(t.stack, tun.StackOptions{
 			Context:                t.ctx,
 			Tun:                    tunInterface,
@@ -460,7 +472,7 @@ func (t *Inbound) Start(stage adapter.StartStage) error {
 			UDPNATMax:              t.udpNATMax,
 			Handler:                t,
 			Logger:                 t.logger,
-			ForwarderBindInterface: C.IsDarwin,
+			ForwarderBindInterface: forwarderBindInterface,
 			InterfaceFinder:        t.networkManager.InterfaceFinder(),
 			IncludeAllNetworks:     includeAllNetworks,
 		})
