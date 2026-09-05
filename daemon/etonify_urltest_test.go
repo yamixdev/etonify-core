@@ -85,3 +85,47 @@ func TestClassifyURLTestError(t *testing.T) {
 	code, _ = classifyURLTestError(errors.New("remote error: tls: bad certificate"))
 	require.Equal(t, "tls", code)
 }
+
+type selectionTestManager struct {
+	adapter.OutboundManager
+	outbounds map[string]adapter.Outbound
+}
+
+func (m selectionTestManager) Outbound(tag string) (adapter.Outbound, bool) {
+	outbound, ok := m.outbounds[tag]
+	return outbound, ok
+}
+
+type selectionTestGroup struct {
+	adapter.Outbound
+	tag      string
+	children []string
+	refresh  func()
+}
+
+func (g selectionTestGroup) Now() string              { return "" }
+func (g selectionTestGroup) All() []string            { return g.children }
+func (g selectionTestGroup) RefreshURLTestSelection() { g.refresh() }
+
+func TestRefreshURLTestSelectionsChildrenBeforeParents(t *testing.T) {
+	var order []string
+	childSelected := false
+	manager := selectionTestManager{outbounds: map[string]adapter.Outbound{}}
+	manager.outbounds["provider"] = selectionTestGroup{
+		tag: "provider", children: []string{"missing"},
+		refresh: func() { childSelected = true; order = append(order, "provider") },
+	}
+	manager.outbounds["lowest"] = selectionTestGroup{
+		tag: "lowest", children: []string{"provider", "provider"},
+		refresh: func() {
+			require.True(t, childSelected, "parent must compare the new child selection")
+			order = append(order, "lowest")
+		},
+	}
+	manager.outbounds["select"] = selectionTestGroup{
+		tag: "select", children: []string{"lowest", "provider", "select"},
+		refresh: func() { order = append(order, "select") },
+	}
+	refreshURLTestGroupSelections(manager, "select")
+	require.Equal(t, []string{"provider", "lowest", "select"}, order)
+}

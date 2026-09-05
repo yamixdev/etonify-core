@@ -1,5 +1,10 @@
 ## Etonify Core 1.14 stable base
 
+### 1.14.0-etonify.3
+
+- Refresh nested URLTest groups before their parent after a manual test. The parent now compares the updated child selection instead of the previous one.
+- Keep refresh traversal bounded for shared members and cyclic group references, with a regression test for refresh order.
+
 This Android library is built from the final sing-box `1.14.0` release with Etonify's mobile integration applied on top. It is a core artifact, not an APK. Device validation is still required before it replaces the library bundled with the production application.
 
 ### Included

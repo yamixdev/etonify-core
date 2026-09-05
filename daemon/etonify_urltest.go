@@ -352,13 +352,15 @@ func refreshURLTestGroupSelections(outboundManager adapter.OutboundManager, root
 		if !loaded {
 			return
 		}
-		if refresher, isRefresher := outbound.(adapter.URLTestSelectionRefresher); isRefresher {
-			refresher.RefreshURLTestSelection()
-		}
 		if group, isGroup := outbound.(adapter.OutboundGroup); isGroup {
 			for _, childTag := range group.All() {
 				visit(childTag)
 			}
+		}
+		// A parent resolves each nested group's current child when comparing
+		// histories. Refresh children first so it does not use the old choice.
+		if refresher, isRefresher := outbound.(adapter.URLTestSelectionRefresher); isRefresher {
+			refresher.RefreshURLTestSelection()
 		}
 	}
 	visit(rootTag)
