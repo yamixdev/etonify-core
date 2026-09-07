@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/urltest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -84,6 +85,26 @@ func TestClassifyURLTestError(t *testing.T) {
 	require.Equal(t, "timeout", code)
 	code, _ = classifyURLTestError(errors.New("remote error: tls: bad certificate"))
 	require.Equal(t, "tls", code)
+}
+
+func TestPrioritizeURLTestTargetsMakesProgressAcrossLargeProfiles(t *testing.T) {
+	history := urltest.NewHistoryStorage()
+	now := time.Now()
+	history.StoreURLTestHistory("fresh", &adapter.URLTestHistory{Time: now})
+	history.StoreURLTestHistory("old", &adapter.URLTestHistory{Time: now.Add(-time.Hour)})
+	targets := []urlTestTarget{
+		{tag: "fresh"},
+		{tag: "missing"},
+		{tag: "old"},
+	}
+
+	prioritizeURLTestTargets(targets, history)
+
+	require.Equal(t, []string{"missing", "old", "fresh"}, []string{
+		targets[0].tag,
+		targets[1].tag,
+		targets[2].tag,
+	})
 }
 
 type selectionTestManager struct {

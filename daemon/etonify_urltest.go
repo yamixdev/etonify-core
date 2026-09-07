@@ -7,6 +7,7 @@ import (
 	"net"
 	neturl "net/url"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -179,7 +180,6 @@ func resolveURLTestTargets(boxService *Instance, groupTag string, targetTag stri
 	if err != nil {
 		return nil, err
 	}
-	memberIndex := indexURLTestTargets(targets)
 
 	if excludeTag != "" {
 		excluded := make(map[string]bool)
@@ -204,9 +204,14 @@ func resolveURLTestTargets(boxService *Instance, groupTag string, targetTag stri
 				}
 			}
 			targets = filtered
-			memberIndex = indexURLTestTargets(targets)
 		}
 	}
+
+	// A bounded session may not reach every member of a very large profile.
+	// Put never-tested and oldest-tested leaves first so repeated runs make
+	// forward progress instead of starving the same tail forever.
+	prioritizeURLTestTargets(targets, boxService.urlTestHistoryStorage)
+	memberIndex := indexURLTestTargets(targets)
 
 	if targetTag != "" {
 		targetOutbound, resolveErr := resolveSelectedURLTestOutbound(outboundManager, targetTag)
@@ -233,6 +238,32 @@ func resolveURLTestTargets(boxService *Instance, groupTag string, targetTag stri
 		return nil, E.New("outbound group has no testable members: ", groupTag)
 	}
 	return targets, nil
+}
+
+func prioritizeURLTestTargets(targets []urlTestTarget, history *urltest.HistoryStorage) {
+	if len(targets) < 2 || history == nil {
+		return
+	}
+	historyTimes := make(map[string]time.Time, len(targets))
+	for _, target := range targets {
+		entry := history.LoadURLTestHistory(target.tag)
+		if entry != nil {
+			historyTimes[target.tag] = entry.Time
+		}
+	}
+	sort.SliceStable(targets, func(leftIndex, rightIndex int) bool {
+		leftTime := historyTimes[targets[leftIndex].tag]
+		rightTime := historyTimes[targets[rightIndex].tag]
+		leftMissing := leftTime.IsZero()
+		rightMissing := rightTime.IsZero()
+		if leftMissing != rightMissing {
+			return leftMissing
+		}
+		if leftMissing {
+			return false
+		}
+		return leftTime.Before(rightTime)
+	})
 }
 
 func indexURLTestTargets(targets []urlTestTarget) map[string]int {
