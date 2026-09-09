@@ -15,6 +15,7 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/settings"
 	"github.com/sagernet/sing-box/common/taskmonitor"
+	"github.com/sagernet/sing-box/common/urltest"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-tun"
@@ -481,6 +482,7 @@ func (r *NetworkManager) UpdateWIFIState(ctx context.Context) {
 }
 
 func (r *NetworkManager) ResetNetwork(ctx context.Context) {
+	service.PtrFromContext[urltest.HistoryStorage](r.ctx).ResetNetwork()
 	if r.connectionManager != nil {
 		r.connectionManager.CloseAll()
 	}

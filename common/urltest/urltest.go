@@ -20,6 +20,7 @@ import (
 
 type HistoryStorage struct {
 	access       sync.RWMutex
+	generation   uint64
 	delayHistory map[string]*adapter.URLTestHistory
 	updateHooks  []*observable.Subscriber[struct{}]
 }
@@ -76,6 +77,46 @@ func (s *HistoryStorage) StoreURLTestHistory(tag string, history *adapter.URLTes
 	updateHooks := append([]*observable.Subscriber[struct{}](nil), s.updateHooks...)
 	s.access.Unlock()
 	notifyUpdated(updateHooks)
+}
+
+// Generation scopes measurements to one network. A probe captures it before
+// dialing; results from an earlier network cannot repopulate cleared history.
+func (s *HistoryStorage) Generation() uint64 {
+	if s == nil {
+		return 0
+	}
+	s.access.RLock()
+	defer s.access.RUnlock()
+	return s.generation
+}
+
+func (s *HistoryStorage) ResetNetwork() {
+	if s == nil {
+		return
+	}
+	s.access.Lock()
+	s.generation++
+	clear(s.delayHistory)
+	hooks := append([]*observable.Subscriber[struct{}](nil), s.updateHooks...)
+	s.access.Unlock()
+	notifyUpdated(hooks)
+}
+
+func (s *HistoryStorage) StoreForGeneration(generation uint64, tag string, history *adapter.URLTestHistory) bool {
+	if s == nil || history == nil {
+		return false
+	}
+	s.access.Lock()
+	if generation != s.generation {
+		s.access.Unlock()
+		return false
+	}
+	copy := *history
+	s.delayHistory[tag] = &copy
+	hooks := append([]*observable.Subscriber[struct{}](nil), s.updateHooks...)
+	s.access.Unlock()
+	notifyUpdated(hooks)
+	return true
 }
 
 func notifyUpdated(updateHooks []*observable.Subscriber[struct{}]) {

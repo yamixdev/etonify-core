@@ -396,27 +396,29 @@ type urlTestResult struct {
 }
 
 type urlTestBatch struct {
-	ctx      context.Context
-	outbound adapter.OutboundManager
-	history  *urltest.HistoryStorage
-	logger   log.Logger
-	batch    *batch.Batch[any]
-	checked  map[string]bool
-	groups   []adapter.OutboundGroup
-	access   sync.Mutex
-	result   map[string]uint16
+	ctx               context.Context
+	networkGeneration uint64
+	outbound          adapter.OutboundManager
+	history           *urltest.HistoryStorage
+	logger            log.Logger
+	batch             *batch.Batch[any]
+	checked           map[string]bool
+	groups            []adapter.OutboundGroup
+	access            sync.Mutex
+	result            map[string]uint16
 }
 
 func URLTestOutbounds(ctx context.Context, outboundManager adapter.OutboundManager, history *urltest.HistoryStorage, logger log.Logger, outbounds []adapter.Outbound, link string, interval time.Duration, force bool) map[string]uint16 {
 	b, _ := batch.New(ctx, batch.WithConcurrencyNum[any](10))
 	testBatch := &urlTestBatch{
-		ctx:      ctx,
-		outbound: outboundManager,
-		history:  history,
-		logger:   logger,
-		batch:    b,
-		checked:  make(map[string]bool),
-		result:   make(map[string]uint16),
+		ctx:               ctx,
+		networkGeneration: history.Generation(),
+		outbound:          outboundManager,
+		history:           history,
+		logger:            logger,
+		batch:             b,
+		checked:           make(map[string]bool),
+		result:            make(map[string]uint16),
 	}
 	testBatch.test(outbounds, link, interval, force)
 	b.Wait()
@@ -461,6 +463,10 @@ func (b *urlTestBatch) test(outbounds []adapter.Outbound, link string, interval 
 			b.checked[tag] = true
 			b.batch.Go(tag, func() (any, error) {
 				testCtx, cancel := context.WithTimeout(b.ctx, C.TCPTimeout)
+				if b.history.Generation() != b.networkGeneration {
+					cancel()
+					return nil, nil
+				}
 				defer cancel()
 				testChan := make(chan urlTestResult, 1)
 				go func() {
@@ -475,10 +481,13 @@ func (b *urlTestBatch) test(outbounds []adapter.Outbound, link string, interval 
 				}
 				if testResult.err != nil {
 					b.logger.Debug("outbound ", tag, " unavailable: ", testResult.err)
-					b.history.DeleteURLTestHistory(tag)
+					b.history.StoreForGeneration(b.networkGeneration, tag, &adapter.URLTestHistory{
+						Time: time.Now(), Status: adapter.URLTestStatusUnavailable,
+						Error: "URL test failed", ErrorCode: "network",
+					})
 				} else {
 					b.logger.Debug("outbound ", tag, " available: ", testResult.delay, "ms")
-					b.history.StoreURLTestHistory(tag, &adapter.URLTestHistory{
+					b.history.StoreForGeneration(b.networkGeneration, tag, &adapter.URLTestHistory{
 						Time:  time.Now(),
 						Delay: testResult.delay,
 					})

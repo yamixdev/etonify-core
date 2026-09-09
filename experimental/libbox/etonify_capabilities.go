@@ -15,6 +15,7 @@ type etonifyCapabilitySet struct {
 	APIVersion                              int      `json:"api_version"`
 	CoreVersion                             string   `json:"core_version"`
 	SupportsTargetedURLTest                 bool     `json:"supports_targeted_url_test"`
+	SupportsURLTestQueuePriority            bool     `json:"supports_url_test_queue_priority"`
 	SupportsGroupURLTestSessions            bool     `json:"supports_group_url_test_sessions"`
 	SupportsStructuredProbeErrors           bool     `json:"supports_structured_probe_errors"`
 	SupportsOutboundExternalInfo            bool     `json:"supports_outbound_external_info"`
@@ -58,6 +59,7 @@ func EtonifyCapabilities() string {
 		APIVersion:                        etonifyAPIVersion,
 		CoreVersion:                       C.Version,
 		SupportsTargetedURLTest:           true,
+		SupportsURLTestQueuePriority:      true,
 		SupportsGroupURLTestSessions:      true,
 		SupportsStructuredProbeErrors:     true,
 		SupportsOutboundExternalInfo:      true,

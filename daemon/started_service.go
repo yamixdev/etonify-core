@@ -260,6 +260,7 @@ func (s *StartedService) StartOrReloadService(ctx context.Context, profileConten
 		return os.ErrClosed
 	}
 	oldInstance := s.instance
+	s.cancelURLTestSessions()
 	if oldInstance != nil {
 		s.instance = nil
 		s.updateStatus(ServiceStatus_STOPPING)
@@ -314,6 +315,7 @@ func (s *StartedService) StartOrReloadService(ctx context.Context, profileConten
 func (s *StartedService) Close() {
 	s.serviceAccess.Lock()
 	s.closed = true
+	s.cancelURLTestSessions()
 	s.serviceAccess.Unlock()
 	s.serviceStatusSubscriber.Close()
 	s.logSubscriber.Close()
@@ -327,6 +329,7 @@ func (s *StartedService) CloseService() error {
 	s.lifecycleAccess.Lock()
 	defer s.lifecycleAccess.Unlock()
 	s.serviceAccess.Lock()
+	s.cancelURLTestSessions()
 	instance := s.instance
 	if instance == nil && s.serviceStatus.Status != ServiceStatus_STARTING && s.serviceStatus.Status != ServiceStatus_STARTED {
 		s.serviceAccess.Unlock()
