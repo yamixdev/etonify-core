@@ -302,30 +302,56 @@ func (g *URLTestGroup) Close() error {
 }
 
 func (g *URLTestGroup) Select(network string) (adapter.Outbound, bool) {
-	var minDelay uint16
-	var minOutbound adapter.Outbound
 	selectedTCP, selectedUDP := g.selectedOutbounds()
+	var selected adapter.Outbound
 	switch network {
 	case N.NetworkTCP:
-		if selectedTCP != nil {
-			if history := g.history.LoadURLTestHistory(RealTag(g.outbound, selectedTCP)); adapter.URLTestHistoryIsAvailable(history) {
-				minOutbound = selectedTCP
-				minDelay = history.Delay
-			}
-		}
+		selected = selectedTCP
 	case N.NetworkUDP:
-		if selectedUDP != nil {
-			if history := g.history.LoadURLTestHistory(RealTag(g.outbound, selectedUDP)); adapter.URLTestHistoryIsAvailable(history) {
-				minOutbound = selectedUDP
-				minDelay = history.Delay
-			}
+		selected = selectedUDP
+	}
+
+	// Prefer measurements from the current physical network as soon as one is
+	// available. Until then, retain the previous generation as a bounded
+	// routing fallback instead of selecting the first configured outbound.
+	// Presentation code reads only current-generation history, so these stale
+	// values can never be shown as a valid latency for the new network.
+	generation := g.history.Generation()
+	if outbound := g.selectByHistory(network, selected, func(tag string) *adapter.URLTestHistory {
+		return g.history.LoadURLTestHistoryForGeneration(tag, generation)
+	}); outbound != nil {
+		return outbound, true
+	}
+	if outbound := g.selectByHistory(network, selected, g.history.LoadFallbackURLTestHistory); outbound != nil {
+		return outbound, true
+	}
+
+	for _, detour := range g.outbounds {
+		if common.Contains(detour.Network(), network) {
+			return detour, false
+		}
+	}
+	return nil, false
+}
+
+func (g *URLTestGroup) selectByHistory(
+	network string,
+	selected adapter.Outbound,
+	loadHistory func(string) *adapter.URLTestHistory,
+) adapter.Outbound {
+	var minDelay uint16
+	var minOutbound adapter.Outbound
+	if selected != nil {
+		if history := loadHistory(RealTag(g.outbound, selected)); adapter.URLTestHistoryIsAvailable(history) {
+			minOutbound = selected
+			minDelay = history.Delay
 		}
 	}
 	for _, detour := range g.outbounds {
 		if !common.Contains(detour.Network(), network) {
 			continue
 		}
-		history := g.history.LoadURLTestHistory(RealTag(g.outbound, detour))
+		history := loadHistory(RealTag(g.outbound, detour))
 		if !adapter.URLTestHistoryIsAvailable(history) {
 			continue
 		}
@@ -334,16 +360,7 @@ func (g *URLTestGroup) Select(network string) (adapter.Outbound, bool) {
 			minOutbound = detour
 		}
 	}
-	if minOutbound == nil {
-		for _, detour := range g.outbounds {
-			if !common.Contains(detour.Network(), network) {
-				continue
-			}
-			return detour, false
-		}
-		return nil, false
-	}
-	return minOutbound, true
+	return minOutbound
 }
 
 func (g *URLTestGroup) loopCheck(ticker *time.Ticker, closeChan <-chan struct{}) {
@@ -423,7 +440,7 @@ func URLTestOutbounds(ctx context.Context, outboundManager adapter.OutboundManag
 	testBatch.test(outbounds, link, interval, force)
 	b.Wait()
 	for _, outboundGroup := range testBatch.groups {
-		groupHistory := history.LoadURLTestHistory(RealTag(outboundManager, outboundGroup))
+		groupHistory := history.LoadCurrentURLTestHistory(RealTag(outboundManager, outboundGroup))
 		if groupHistory != nil {
 			testBatch.result[outboundGroup.Tag()] = groupHistory.Delay
 		}
@@ -456,7 +473,7 @@ func (b *urlTestBatch) test(outbounds []adapter.Outbound, link string, interval 
 				return member
 			})), link, interval, force)
 		default:
-			history := b.history.LoadURLTestHistory(tag)
+			history := b.history.LoadCurrentURLTestHistory(tag)
 			if !force && history != nil && time.Since(history.Time) < interval {
 				continue
 			}

@@ -260,7 +260,7 @@ func prioritizeURLTestTargets(targets []urlTestTarget, history *urltest.HistoryS
 	}
 	historyTimes := make(map[string]time.Time, len(targets))
 	for _, target := range targets {
-		entry := history.LoadURLTestHistory(target.tag)
+		entry := history.LoadCurrentURLTestHistory(target.tag)
 		if entry != nil {
 			historyTimes[target.tag] = entry.Time
 		}

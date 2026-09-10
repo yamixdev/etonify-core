@@ -92,3 +92,45 @@ func TestURLTestSelectionKeepsHealthyOutboundWithinTolerance(t *testing.T) {
 	require.True(t, hasHistory)
 	require.Same(t, selected, outbound)
 }
+
+func TestURLTestSelectionUsesStaleFallbackUntilFreshNetworkResult(t *testing.T) {
+	t.Parallel()
+
+	staleFast := &urlTestSelectionOutbound{tag: "stale-fast"}
+	freshSlower := &urlTestSelectionOutbound{tag: "fresh-slower"}
+	history := U.NewHistoryStorage()
+	history.StoreURLTestHistory(staleFast.Tag(), &adapter.URLTestHistory{
+		Time:  time.Now(),
+		Delay: 25,
+	})
+	history.StoreURLTestHistory(freshSlower.Tag(), &adapter.URLTestHistory{
+		Time:  time.Now(),
+		Delay: 40,
+	})
+	history.ResetNetwork()
+	group := &URLTestGroup{
+		outbounds:           []adapter.Outbound{staleFast, freshSlower},
+		history:             history,
+		tolerance:           50,
+		interruptGroup:      interrupt.NewGroup(),
+		selectedOutboundTCP: staleFast,
+	}
+
+	selected, availableHistory := group.Select(N.NetworkTCP)
+	require.True(t, availableHistory)
+	require.Same(t, staleFast, selected)
+
+	require.True(t, history.StoreForGeneration(
+		history.Generation(),
+		freshSlower.Tag(),
+		&adapter.URLTestHistory{Time: time.Now(), Delay: 90},
+	))
+	selected, availableHistory = group.Select(N.NetworkTCP)
+	require.True(t, availableHistory)
+	require.Same(t, freshSlower, selected)
+
+	group.performUpdateCheck()
+	selectedTCP, selectedUDP := group.selectedOutbounds()
+	require.Same(t, freshSlower, selectedTCP)
+	require.Same(t, freshSlower, selectedUDP)
+}

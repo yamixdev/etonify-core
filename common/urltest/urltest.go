@@ -21,13 +21,18 @@ import (
 type HistoryStorage struct {
 	access       sync.RWMutex
 	generation   uint64
-	delayHistory map[string]*adapter.URLTestHistory
+	delayHistory map[string]networkHistoryEntry
 	updateHooks  []*observable.Subscriber[struct{}]
+}
+
+type networkHistoryEntry struct {
+	generation uint64
+	history    adapter.URLTestHistory
 }
 
 func NewHistoryStorage() *HistoryStorage {
 	return &HistoryStorage{
-		delayHistory: make(map[string]*adapter.URLTestHistory),
+		delayHistory: make(map[string]networkHistoryEntry),
 	}
 }
 
@@ -45,16 +50,52 @@ func (s *HistoryStorage) NotifyUpdated() {
 }
 
 func (s *HistoryStorage) LoadURLTestHistory(tag string) *adapter.URLTestHistory {
+	return s.LoadCurrentURLTestHistory(tag)
+}
+
+// LoadFallbackURLTestHistory may return a successful measurement from the
+// previous network generation. It is only for temporary routing continuity;
+// telemetry and freshness decisions must use LoadCurrentURLTestHistory.
+func (s *HistoryStorage) LoadFallbackURLTestHistory(tag string) *adapter.URLTestHistory {
+	return s.loadURLTestHistory(tag, nil)
+}
+
+// LoadCurrentURLTestHistory returns only measurements made on the current
+// network generation. Callers that present telemetry must use this method so
+// a Wi-Fi result is never reported as a cellular result after a handover.
+func (s *HistoryStorage) LoadCurrentURLTestHistory(tag string) *adapter.URLTestHistory {
 	if s == nil {
 		return nil
 	}
 	s.access.RLock()
 	defer s.access.RUnlock()
-	history := s.delayHistory[tag]
-	if history == nil {
+	entry, loaded := s.delayHistory[tag]
+	if !loaded || entry.generation != s.generation {
 		return nil
 	}
-	historyCopy := *history
+	historyCopy := entry.history
+	return &historyCopy
+}
+
+// LoadURLTestHistoryForGeneration reads one entry from a caller-owned
+// generation snapshot. It lets selection code make one coherent decision even
+// if another network callback arrives while the group is being inspected.
+func (s *HistoryStorage) LoadURLTestHistoryForGeneration(tag string, generation uint64) *adapter.URLTestHistory {
+	return s.loadURLTestHistory(tag, &generation)
+}
+
+func (s *HistoryStorage) loadURLTestHistory(tag string, generation *uint64) *adapter.URLTestHistory {
+	if s == nil {
+		return nil
+	}
+	s.access.RLock()
+	defer s.access.RUnlock()
+	entry, loaded := s.delayHistory[tag]
+	if !loaded ||
+		(generation != nil && (*generation != s.generation || entry.generation != *generation)) {
+		return nil
+	}
+	historyCopy := entry.history
 	return &historyCopy
 }
 
@@ -73,14 +114,17 @@ func (s *HistoryStorage) StoreURLTestHistory(tag string, history *adapter.URLTes
 	}
 	historyCopy := *history
 	s.access.Lock()
-	s.delayHistory[tag] = &historyCopy
+	s.delayHistory[tag] = networkHistoryEntry{
+		generation: s.generation,
+		history:    historyCopy,
+	}
 	updateHooks := append([]*observable.Subscriber[struct{}](nil), s.updateHooks...)
 	s.access.Unlock()
 	notifyUpdated(updateHooks)
 }
 
 // Generation scopes measurements to one network. A probe captures it before
-// dialing; results from an earlier network cannot repopulate cleared history.
+// dialing; results from an earlier network cannot overwrite current history.
 func (s *HistoryStorage) Generation() uint64 {
 	if s == nil {
 		return 0
@@ -96,7 +140,6 @@ func (s *HistoryStorage) ResetNetwork() {
 	}
 	s.access.Lock()
 	s.generation++
-	clear(s.delayHistory)
 	hooks := append([]*observable.Subscriber[struct{}](nil), s.updateHooks...)
 	s.access.Unlock()
 	notifyUpdated(hooks)
@@ -111,8 +154,11 @@ func (s *HistoryStorage) StoreForGeneration(generation uint64, tag string, histo
 		s.access.Unlock()
 		return false
 	}
-	copy := *history
-	s.delayHistory[tag] = &copy
+	historyCopy := *history
+	s.delayHistory[tag] = networkHistoryEntry{
+		generation: generation,
+		history:    historyCopy,
+	}
 	hooks := append([]*observable.Subscriber[struct{}](nil), s.updateHooks...)
 	s.access.Unlock()
 	notifyUpdated(hooks)
