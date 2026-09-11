@@ -36,3 +36,17 @@ func (q *urlTestQueue) prioritize(tag string) {
 		}
 	}
 }
+
+func (q *urlTestQueue) remove(tag string) bool {
+	q.access.Lock()
+	defer q.access.Unlock()
+	for i, target := range q.pending {
+		if target.tag == tag {
+			copy(q.pending[i:], q.pending[i+1:])
+			q.pending[len(q.pending)-1] = urlTestTarget{}
+			q.pending = q.pending[:len(q.pending)-1]
+			return true
+		}
+	}
+	return false
+}

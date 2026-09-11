@@ -27,6 +27,27 @@ func TestURLTestQueuePriorityDoesNotDuplicateClaimedJobs(t *testing.T) {
 	}
 }
 
+func TestURLTestQueueRemove(t *testing.T) {
+	q := newURLTestQueue([]urlTestTarget{{tag: "a"}, {tag: "b"}, {tag: "c"}})
+	if !q.remove("b") {
+		t.Fatal("expected b to be removed")
+	}
+	if q.remove("b") {
+		t.Fatal("expected second remove of b to return false")
+	}
+	if q.remove("non-existent") {
+		t.Fatal("expected remove of non-existent to return false")
+	}
+	first, _ := q.take()
+	second, _ := q.take()
+	if first.tag != "a" || second.tag != "c" {
+		t.Fatalf("unexpected queue order after remove: %s, %s", first.tag, second.tag)
+	}
+	if _, ok := q.take(); ok {
+		t.Fatal("expected empty queue")
+	}
+}
+
 func TestURLTestPublishesBeforeQueueCompletes(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -103,3 +124,43 @@ func TestURLTestFinishedSessionRetention(t *testing.T) {
 		})
 	}
 }
+
+func TestURLTestTargetedSessionRunsParallelWithFullSession(t *testing.T) {
+	ctxFull, cancelFull := context.WithCancel(context.Background())
+	defer cancelFull()
+	ctxTarget, cancelTarget := context.WithCancel(context.Background())
+	defer cancelTarget()
+
+	sessionFull := &urlTestSession{ctx: ctxFull, cancel: cancelFull, full: true}
+	sessionTarget := &urlTestSession{ctx: ctxTarget, cancel: cancelTarget, full: false}
+
+	targetKey := "select\x00target\x00proxy-1"
+	s := &StartedService{urlTestSessions: map[string]*urlTestSession{
+		"select":  sessionFull,
+		targetKey: sessionTarget,
+	}}
+
+	if !s.isCurrentURLTestSession("select", sessionFull) {
+		t.Fatal("full session is not current")
+	}
+	if !s.isCurrentURLTestSession(targetKey, sessionTarget) {
+		t.Fatal("targeted session is not current")
+	}
+
+	// Targeted session completes without touching the full session
+	s.finishURLTestSession(targetKey, sessionTarget)
+	if s.urlTestSessions[targetKey] != nil {
+		t.Fatal("targeted session was not deleted")
+	}
+	if s.urlTestSessions["select"] != sessionFull {
+		t.Fatal("full session was unexpectedly altered")
+	}
+
+	// cancelURLTestSessions cleans up both full and targeted sessions
+	s.urlTestSessions[targetKey] = sessionTarget
+	s.cancelURLTestSessions()
+	if ctxFull.Err() == nil || ctxTarget.Err() == nil || len(s.urlTestSessions) != 0 {
+		t.Fatal("cancelURLTestSessions failed to clean all sessions")
+	}
+}
+
