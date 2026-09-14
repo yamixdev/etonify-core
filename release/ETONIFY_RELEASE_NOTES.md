@@ -1,17 +1,19 @@
-## Etonify Core 1.14 stable base
+## Etonify Core 1.15 alpha test base
 
-### 1.14.0-etonify.3
+### 1.15.0-alpha.3-etonify.1
 
-- Refresh nested URLTest groups before their parent after a manual test. The parent now compares the updated child selection instead of the previous one.
-- Keep refresh traversal bounded for shared members and cyclic group references, with a regression test for refresh order.
+- Use the new sing-tun TCP/IP stack by default. The legacy system, gVisor and mixed stacks remain available as compatibility modes.
+- Coalesce repeated network-environment updates before performing the more expensive refresh work.
+- Track active outbound and DNS references, and close idle resources that are no longer used by routing or the selected proxy group.
+- Preserve Etonify's bounded URLTest sessions, XHTTP lifecycle fixes and Android network binding behavior on the 1.15 codebase.
 
-This Android library is built from the final sing-box `1.14.0` release with Etonify's mobile integration applied on top. It is a core artifact, not an APK. Device validation is still required before it replaces the library bundled with the production application.
+This Android library is built from the prerelease sing-box `1.15.0-alpha.3` tag with Etonify's mobile integration applied on top. It is a test core artifact, not an APK, and must pass device validation before production use.
 
 ### Included
 
-- The complete sing-box 1.14.0 networking, DNS, routing, TUN, QUIC and Android baseline.
-- Stable 1.14 DNS timeouts, optimistic caching, corrected rule-set matching and network reset behavior.
-- Updated quic-go, gVisor, uTLS, Tailscale and NaiveProxy dependency set from the final upstream release.
+- The sing-box 1.15.0-alpha.3 networking, DNS, routing, TUN, QUIC and Android baseline.
+- The new sing-tun TCP/IP stack selected by omitting the deprecated `stack` field.
+- Reference-aware idle connection management for outbounds and DNS transports.
 - Versioned Etonify capabilities so the client enables only features implemented by this core.
 - Targeted and group URLTest with bounded parallelism, cancellation, structured errors and failover.
 - External IP and country lookup through the selected outbound.
@@ -34,4 +36,4 @@ This Android library is built from the final sing-box `1.14.0` release with Eton
 
 ### Device validation still required
 
-Before replacing the bundled production core, test VPN and local proxy modes, TCP and UDP traffic, system/gVisor/mixed TUN stacks, Wi-Fi/LTE handoff, DNS modes, routing rule-sets, targeted and group URLTest, external IP lookup, repeated start/stop cycles and an application update without clearing data.
+Before production use, test VPN and local proxy modes, TCP and UDP traffic, the native stack and every compatibility stack, Wi-Fi/LTE handoff, DNS modes, routing rule-sets, targeted and group URLTest, external IP lookup, repeated start/stop cycles and an application update without clearing data.

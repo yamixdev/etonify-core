@@ -8,17 +8,8 @@ import (
 	"time"
 
 	E "github.com/sagernet/sing/common/exceptions"
-	"github.com/sagernet/sing/common/observable"
 	"github.com/sagernet/sing/common/varbin"
 )
-
-type ClashServer interface {
-	LifecycleService
-	Mode() string
-	ModeList() []string
-	SetMode(mode string)
-	AddModeUpdateHook(hook *observable.Subscriber[struct{}])
-}
 
 type URLTestHistory struct {
 	Time      time.Time `json:"time"`
@@ -68,6 +59,7 @@ type CacheFile interface {
 
 	SetDisableExpire(disableExpire bool)
 	SetOptimisticTimeout(timeout time.Duration)
+	Flush()
 
 	LoadMode() string
 	StoreMode(mode string) error

@@ -1,6 +1,7 @@
 package libbox
 
 import (
+	"encoding/json"
 	"math"
 	"os"
 	"path/filepath"
@@ -38,6 +39,7 @@ var (
 	sOOMMemoryLimit          int64
 	sGoMemoryLimit           int64
 	sPowerReportEnabled      bool
+	sPlatformMetadata        []byte
 )
 
 func init() {
@@ -62,6 +64,7 @@ type SetupOptions struct {
 	OomMemoryLimit          int64
 	GoMemoryLimit           int64
 	PowerReportEnabled      bool
+	PlatformMetadata        string
 }
 
 func applySetupOptions(options *SetupOptions) {
@@ -92,8 +95,14 @@ func ReloadSetupOptions(options *SetupOptions) {
 	sOOMMemoryLimit = options.OomMemoryLimit
 	sGoMemoryLimit = options.GoMemoryLimit
 	sPowerReportEnabled = options.PowerReportEnabled
+	if json.Valid([]byte(options.PlatformMetadata)) {
+		sPlatformMetadata = []byte(options.PlatformMetadata)
+	} else {
+		sPlatformMetadata = nil
+	}
 	if sOOMKillerEnabled && sOOMMemoryLimit == 0 && C.IsIos {
 		sOOMMemoryLimit = oomkiller.DefaultAppleNetworkExtensionMemoryLimit
+		debug.SetGCPercent(oomkiller.DefaultAppleNetworkExtensionGCPercent)
 	}
 	debug.SetMemoryLimit(resolveGoMemoryLimit(
 		sGoMemoryLimit,
@@ -119,7 +128,9 @@ func Setup(options *SetupOptions) error {
 	applySetupOptions(options)
 	os.MkdirAll(sWorkingPath, 0o777)
 	os.MkdirAll(sTempPath, 0o777)
-	return redirectStderr(filepath.Join(sWorkingPath, "CrashReport-"+sCrashReportSource+".log"))
+	err := redirectStderr(filepath.Join(sWorkingPath, "CrashReport-"+sCrashReportSource+".log"))
+	savePlatformSnapshot()
+	return err
 }
 
 func SetLocale(localeID string) error {

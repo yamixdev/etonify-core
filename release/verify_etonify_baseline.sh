@@ -26,7 +26,7 @@ grep -Fq "defaultAndroidBindTarget = \"${LIBBOX_ANDROID_TARGET}\"" cmd/internal/
 for build_tag in ${LIBBOX_BUILD_TAGS//,/ }; do
   grep -Fq "\"${build_tag}\"" cmd/internal/build_libbox/main.go
 done
-for excluded_tag in with_usbip with_openvpn with_openconnect; do
+for excluded_tag in with_usbip with_openvpn with_openconnect with_wireguard with_tailscale; do
   if grep -Fq "\"${excluded_tag}\"" cmd/internal/build_libbox/main.go; then
     printf 'unexpected Android build tag: %s\n' "${excluded_tag}" >&2
     exit 1

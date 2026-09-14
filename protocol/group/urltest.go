@@ -33,6 +33,7 @@ var (
 	_ adapter.OutboundGroup             = (*URLTest)(nil)
 	_ adapter.InterfaceUpdateListener   = (*URLTest)(nil)
 	_ adapter.URLTestSelectionRefresher = (*URLTest)(nil)
+	_ adapter.Referrer                  = (*URLTest)(nil)
 )
 
 type URLTest struct {
@@ -111,6 +112,22 @@ func (s *URLTest) Now() string {
 
 func (s *URLTest) All() []string {
 	return s.tags
+}
+
+func (s *URLTest) References() []string {
+	group := s.group
+	if group == nil {
+		return nil
+	}
+	selectedTCP, selectedUDP := group.selectedOutbounds()
+	var references []string
+	if selectedTCP != nil {
+		references = append(references, selectedTCP.Tag())
+	}
+	if selectedUDP != nil && selectedUDP != selectedTCP {
+		references = append(references, selectedUDP.Tag())
+	}
+	return references
 }
 
 func (s *URLTest) URLTest(ctx context.Context) (map[string]uint16, error) {
@@ -523,19 +540,27 @@ func (g *URLTestGroup) performUpdateCheck() {
 	defer g.updateAccess.Unlock()
 	nextTCP, tcpExists := g.Select(N.NetworkTCP)
 	nextUDP, udpExists := g.Select(N.NetworkUDP)
-	var updated bool
+	var (
+		updated  bool
+		selected bool
+	)
 	g.selectionAccess.Lock()
 	if nextTCP != nil && (g.selectedOutboundTCP == nil || (tcpExists && nextTCP != g.selectedOutboundTCP)) {
 		updated = g.selectedOutboundTCP != nil
 		g.selectedOutboundTCP = nextTCP
+		selected = true
 	}
 	if nextUDP != nil && (g.selectedOutboundUDP == nil || (udpExists && nextUDP != g.selectedOutboundUDP)) {
 		updated = updated || g.selectedOutboundUDP != nil
 		g.selectedOutboundUDP = nextUDP
+		selected = true
 	}
 	g.selectionAccess.Unlock()
 	if updated {
 		g.interruptGroup.Interrupt(g.interruptExternalConnections)
+	}
+	if selected {
+		g.history.NotifyUpdated()
 	}
 }
 

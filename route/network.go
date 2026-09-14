@@ -292,7 +292,7 @@ func (r *NetworkManager) InterfaceFinder() control.InterfaceFinder {
 }
 
 func (r *NetworkManager) UpdateInterfaces() error {
-	defer r.updateNetworkEnvironment()
+	defer r.postUpdateNetworkEnvironment()
 	if r.platformInterface == nil || !r.platformInterface.UsePlatformNetworkInterfaces() {
 		return r.interfaceFinder.Update()
 	} else {
@@ -509,6 +509,16 @@ func (r *NetworkManager) ResetNetwork(ctx context.Context) {
 	}
 
 	r.router.ResetNetwork()
+}
+
+func (r *NetworkManager) ReleaseMemory(ctx context.Context) {
+	r.ResetNetwork(ctx)
+	for _, outbound := range r.outbound.Outbounds() {
+		keeper, isKeeper := outbound.(adapter.IdleConnectionKeeper)
+		if isKeeper {
+			keeper.CloseIdleConnections()
+		}
+	}
 }
 
 func (r *NetworkManager) notifyInterfaceUpdate(defaultInterface *control.Interface, flags int) {
