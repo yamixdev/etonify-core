@@ -134,3 +134,21 @@ func TestURLTestSelectionUsesStaleFallbackUntilFreshNetworkResult(t *testing.T) 
 	require.Same(t, freshSlower, selectedTCP)
 	require.Same(t, freshSlower, selectedUDP)
 }
+
+func TestExternallyManagedURLTestGroupDoesNotStartOwnScheduler(t *testing.T) {
+	history := U.NewHistoryStorage()
+	history.SetExternallyManaged(true)
+	group := &URLTestGroup{
+		ctx:            context.Background(),
+		history:        history,
+		interval:       time.Second,
+		close:          make(chan struct{}),
+		interruptGroup: interrupt.NewGroup(),
+	}
+
+	group.PostStart()
+	group.Touch()
+
+	require.True(t, group.started)
+	require.Nil(t, group.ticker)
+}

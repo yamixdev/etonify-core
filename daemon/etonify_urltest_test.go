@@ -26,6 +26,27 @@ func TestNormalizeURLTestOptions(t *testing.T) {
 	require.Equal(t, maximumURLTestConcurrency, options.concurrency)
 }
 
+func TestNormalizeURLTestSessionModes(t *testing.T) {
+	manual := normalizeURLTestOptions(&URLTestRequest{Mode: urlTestModeManual})
+	require.Equal(t, urlTestModeManual, manual.mode)
+	require.Zero(t, manual.deadline)
+	require.Equal(t, defaultURLTestConcurrency, manual.concurrency)
+
+	background := normalizeURLTestOptions(&URLTestRequest{})
+	require.Equal(t, urlTestModeBackground, background.mode)
+	require.Equal(t, defaultURLTestDeadline, background.deadline)
+	require.Equal(t, backgroundURLTestConcurrency, background.concurrency)
+
+	targeted := normalizeURLTestOptions(&URLTestRequest{
+		Mode:              urlTestModeManual,
+		TargetOutboundTag: "proxy-1",
+		Concurrency:       12,
+	})
+	require.Equal(t, urlTestModeTargeted, targeted.mode)
+	require.Equal(t, 1, targeted.concurrency)
+	require.Equal(t, defaultURLTestDeadline, targeted.deadline)
+}
+
 func TestValidateURLTestLink(t *testing.T) {
 	require.NoError(t, validateURLTestLink(""))
 	require.NoError(t, validateURLTestLink("https://example.com/generate_204"))

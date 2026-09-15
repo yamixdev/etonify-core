@@ -53,6 +53,7 @@ type CommandClientHandler interface {
 	WriteLogs(messageList LogIterator)
 	WriteStatus(message *StatusMessage)
 	WriteGroups(message OutboundGroupIterator)
+	WriteURLTestUpdate(message *URLTestUpdate)
 	WriteOutbounds(message OutboundGroupItemIterator)
 	InitializeClashMode(modeList StringIterator, currentMode string)
 	UpdateClashMode(newMode string)
@@ -303,6 +304,8 @@ func (c *CommandClient) dispatchCommands() error {
 			go c.handleConnectionsStream()
 		case CommandOutbounds:
 			go c.handleOutboundsStream()
+		case CommandURLTest:
+			go c.handleURLTestStream()
 		default:
 			return E.New("unknown command: ", command)
 		}
@@ -469,6 +472,23 @@ func (c *CommandClient) handleGroupStream() {
 	}
 }
 
+func (c *CommandClient) handleURLTestStream() {
+	client, ctx := c.getStreamContext()
+	stream, err := client.SubscribeURLTestUpdates(ctx, &emptypb.Empty{})
+	if err != nil {
+		c.handler.Disconnected(E.Cause(err, "subscribe URL test updates").Error())
+		return
+	}
+	for {
+		update, err := stream.Recv()
+		if err != nil {
+			c.handler.Disconnected(E.Cause(err, "URL test stream recv").Error())
+			return
+		}
+		c.handler.WriteURLTestUpdate(urlTestUpdateFromGRPC(update))
+	}
+}
+
 func (c *CommandClient) handleClashModeStream() {
 	client, ctx := c.getStreamContext()
 
@@ -577,6 +597,10 @@ func (c *CommandClient) URLTestWithURL(groupTag string, urlTestURL string) error
 }
 
 func (c *CommandClient) URLTestWithOptions(groupTag string, targetOutboundTag string, priorityOutboundTag string, excludeOutboundTag string, urlTestURL string, timeoutMillis int32, concurrency int32, deadlineMillis int32, force bool) error {
+	return c.URLTestWithMode(groupTag, targetOutboundTag, priorityOutboundTag, excludeOutboundTag, urlTestURL, timeoutMillis, concurrency, deadlineMillis, force, "")
+}
+
+func (c *CommandClient) URLTestWithMode(groupTag string, targetOutboundTag string, priorityOutboundTag string, excludeOutboundTag string, urlTestURL string, timeoutMillis int32, concurrency int32, deadlineMillis int32, force bool, mode string) error {
 	_, err := callWithResult(c, func(ctx context.Context, client daemon.StartedServiceClient) (*emptypb.Empty, error) {
 		return client.URLTest(ctx, &daemon.URLTestRequest{
 			OutboundTag:         groupTag,
@@ -588,10 +612,24 @@ func (c *CommandClient) URLTestWithOptions(groupTag string, targetOutboundTag st
 			Concurrency:         concurrency,
 			DeadlineMillis:      deadlineMillis,
 			Force:               force,
+			Mode:                mode,
 		})
 	})
 	if err != nil {
 		return E.Cause(err, "url test")
+	}
+	return nil
+}
+
+func (c *CommandClient) CancelURLTest(groupTag string, targetOutboundTag string) error {
+	_, err := callWithResult(c, func(ctx context.Context, client daemon.StartedServiceClient) (*emptypb.Empty, error) {
+		return client.CancelURLTest(ctx, &daemon.URLTestCancelRequest{
+			OutboundTag:       groupTag,
+			TargetOutboundTag: targetOutboundTag,
+		})
+	})
+	if err != nil {
+		return E.Cause(err, "cancel URL test")
 	}
 	return nil
 }

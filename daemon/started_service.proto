@@ -19,6 +19,8 @@ service StartedService {
   rpc SetClashMode(ClashMode) returns(google.protobuf.Empty) {}
 
   rpc URLTest(URLTestRequest) returns(google.protobuf.Empty) {}
+  rpc SubscribeURLTestUpdates(google.protobuf.Empty) returns(stream URLTestUpdate) {}
+  rpc CancelURLTest(URLTestCancelRequest) returns(google.protobuf.Empty) {}
   rpc LookupOutboundExternalInfo(OutboundExternalInfoRequest) returns(OutboundExternalInfoResponse) {}
   rpc FetchURLViaOutbound(OutboundHTTPFetchRequest) returns(OutboundHTTPFetchResponse) {}
   rpc SelectOutbound(SelectOutboundRequest) returns (google.protobuf.Empty) {}
@@ -145,6 +147,43 @@ message URLTestRequest {
   int32 concurrency = 7;
   int32 deadlineMillis = 8;
   bool force = 9;
+  string mode = 10;
+}
+
+message URLTestCancelRequest {
+  string outboundTag = 1;
+  string targetOutboundTag = 2;
+}
+
+message URLTestUpdate {
+  URLTestResult result = 1;
+  URLTestSessionStatus session = 2;
+}
+
+message URLTestResult {
+  string tag = 1;
+  int64 measuredAtMillis = 2;
+  int32 delay = 3;
+  string status = 4;
+  string error = 5;
+  string errorCode = 6;
+  uint64 revision = 7;
+  uint64 networkGeneration = 8;
+  uint64 sessionId = 9;
+}
+
+message URLTestSessionStatus {
+  uint64 sessionId = 1;
+  string outboundTag = 2;
+  string targetOutboundTag = 3;
+  string mode = 4;
+  string state = 5;
+  string terminalReason = 6;
+  int32 total = 7;
+  int32 completed = 8;
+  int32 available = 9;
+  int32 unavailable = 10;
+  uint64 networkGeneration = 11;
 }
 
 message OutboundExternalInfoRequest {

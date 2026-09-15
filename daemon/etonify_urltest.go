@@ -20,16 +20,24 @@ import (
 )
 
 const (
-	defaultURLTestTimeout     = 5 * time.Second
-	minimumURLTestTimeout     = 500 * time.Millisecond
-	maximumURLTestTimeout     = 30 * time.Second
-	defaultURLTestDeadline    = 30 * time.Second
-	maximumURLTestDeadline    = 2 * time.Minute
-	defaultURLTestConcurrency = 8
-	maximumURLTestConcurrency = 16
+	defaultURLTestTimeout        = 5 * time.Second
+	minimumURLTestTimeout        = 500 * time.Millisecond
+	maximumURLTestTimeout        = 30 * time.Second
+	defaultURLTestDeadline       = 30 * time.Second
+	maximumURLTestDeadline       = 2 * time.Minute
+	defaultURLTestConcurrency    = 10
+	backgroundURLTestConcurrency = 4
+	maximumURLTestConcurrency    = 16
+)
+
+const (
+	urlTestModeBackground = "background"
+	urlTestModeManual     = "manual"
+	urlTestModeTargeted   = "targeted"
 )
 
 type urlTestSession struct {
+	access            sync.Mutex
 	id                uint64
 	instance          *Instance
 	cancel            context.CancelFunc
@@ -38,6 +46,14 @@ type urlTestSession struct {
 	full              bool
 	ctx               context.Context
 	completed         bool // guarded by urlTestSessionAccess
+	groupTag          string
+	targetTag         string
+	mode              string
+	total             int
+	completedCount    int
+	availableCount    int
+	unavailableCount  int
+	cancelReason      string
 }
 
 type urlTestSessionOptions struct {
@@ -45,6 +61,7 @@ type urlTestSessionOptions struct {
 	timeout     time.Duration
 	deadline    time.Duration
 	concurrency int
+	mode        string
 }
 
 type urlTestTarget struct {
@@ -85,7 +102,13 @@ func (s *StartedService) startURLTest(request *URLTestRequest) (*emptypb.Empty, 
 		s.serviceAccess.RUnlock()
 		return nil, err
 	}
-	sessionContext, cancel := context.WithTimeout(boxService.ctx, options.deadline)
+	var sessionContext context.Context
+	var cancel context.CancelFunc
+	if options.deadline > 0 {
+		sessionContext, cancel = context.WithTimeout(boxService.ctx, options.deadline)
+	} else {
+		sessionContext, cancel = context.WithCancel(boxService.ctx)
+	}
 
 	sessionKey := groupTag
 	targetTag := strings.TrimSpace(request.TargetOutboundTag)
@@ -96,8 +119,16 @@ func (s *StartedService) startURLTest(request *URLTestRequest) (*emptypb.Empty, 
 
 	s.urlTestSessionAccess.Lock()
 	if isTargeted {
-		if existingFull := s.urlTestSessions[groupTag]; existingFull != nil && existingFull.full && existingFull.queue != nil {
-			existingFull.queue.remove(targets[0].tag)
+		if existingFull := s.urlTestSessions[groupTag]; existingFull != nil &&
+			existingFull.instance == boxService && existingFull.full &&
+			existingFull.ctx.Err() == nil && existingFull.networkGeneration == boxService.urlTestHistoryStorage.Generation() &&
+			existingFull.queue != nil && existingFull.queue.prioritize(targets[0].tag) {
+			// The full session owns this leaf. A tap only promotes a queued
+			// target; claimed/completed targets join the existing work.
+			s.urlTestSessionAccess.Unlock()
+			s.serviceAccess.RUnlock()
+			cancel()
+			return &emptypb.Empty{}, nil
 		}
 	}
 	if existing := s.urlTestSessions[sessionKey]; existing != nil {
@@ -120,37 +151,59 @@ func (s *StartedService) startURLTest(request *URLTestRequest) (*emptypb.Empty, 
 		networkGeneration: boxService.urlTestHistoryStorage.Generation(),
 		full:              !isTargeted,
 		ctx:               sessionContext,
+		groupTag:          groupTag,
+		targetTag:         targetTag,
+		mode:              options.mode,
+		total:             len(targets),
 	}
 	s.urlTestSessions[sessionKey] = session
 	s.urlTestSessionAccess.Unlock()
 	s.serviceAccess.RUnlock()
 
+	s.emitURLTestSession(session, "running", "")
 	go s.runURLTestSession(sessionContext, sessionKey, groupTag, session, targets, options)
 	return &emptypb.Empty{}, nil
 }
 
 func normalizeURLTestOptions(request *URLTestRequest) urlTestSessionOptions {
+	mode := strings.ToLower(strings.TrimSpace(request.Mode))
+	if strings.TrimSpace(request.TargetOutboundTag) != "" {
+		mode = urlTestModeTargeted
+	} else if mode != urlTestModeManual && mode != urlTestModeBackground {
+		mode = urlTestModeBackground
+	}
 	timeout := clampDuration(
 		durationFromMilliseconds(request.TimeoutMillis, defaultURLTestTimeout),
 		minimumURLTestTimeout,
 		maximumURLTestTimeout,
 	)
-	deadline := clampDuration(
-		durationFromMilliseconds(request.DeadlineMillis, defaultURLTestDeadline),
-		timeout,
-		maximumURLTestDeadline,
-	)
+	var deadline time.Duration
+	if mode != urlTestModeManual {
+		deadline = clampDuration(
+			durationFromMilliseconds(request.DeadlineMillis, defaultURLTestDeadline),
+			timeout,
+			maximumURLTestDeadline,
+		)
+	}
 	concurrency := int(request.Concurrency)
 	if concurrency <= 0 {
-		concurrency = defaultURLTestConcurrency
+		if mode == urlTestModeBackground {
+			concurrency = backgroundURLTestConcurrency
+		} else {
+			concurrency = defaultURLTestConcurrency
+		}
 	} else if concurrency > maximumURLTestConcurrency {
 		concurrency = maximumURLTestConcurrency
+	}
+	if mode == urlTestModeTargeted {
+		concurrency = 1
 	}
 	return urlTestSessionOptions{
 		link:        strings.TrimSpace(request.UrlTestUrl),
 		timeout:     timeout,
 		deadline:    deadline,
 		concurrency: concurrency,
+		mode:        mode,
 	}
 }
 
@@ -364,7 +417,7 @@ func (s *StartedService) runURLTestSession(ctx context.Context, sessionKey strin
 
 	probe := func(probeContext context.Context, link string, outbound adapter.Outbound) (uint16, error) {
 		if session.networkGeneration != session.instance.urlTestHistoryStorage.Generation() {
-			session.cancel()
+			session.requestCancel("network_changed")
 			return 0, context.Canceled
 		}
 		return urltest.URLTest(probeContext, link, outbound)
@@ -373,29 +426,133 @@ func (s *StartedService) runURLTestSession(ctx context.Context, sessionKey strin
 		if !s.isCurrentURLTestSession(sessionKey, session) {
 			return
 		}
+		// A session deadline or cancellation means this probe did not finish on
+		// its own terms. Leave it pending instead of fabricating an unavailable
+		// result. A per-probe timeout still arrives while the session is active
+		// and is recorded normally.
+		if ctx.Err() != nil {
+			return
+		}
 		now := time.Now()
 		if err != nil {
 			errorCode, errorMessage := classifyURLTestError(err)
-			session.instance.urlTestHistoryStorage.StoreForGeneration(session.networkGeneration, target.tag, &adapter.URLTestHistory{
+			history := &adapter.URLTestHistory{
 				Time:      now,
 				Status:    adapter.URLTestStatusUnavailable,
 				Error:     errorMessage,
 				ErrorCode: errorCode,
-			})
+			}
+			if session.instance.urlTestHistoryStorage.StoreForGeneration(session.networkGeneration, target.tag, history) {
+				s.emitURLTestResult(session, target.tag, history)
+				session.recordResult(false)
+				s.emitURLTestSession(session, "running", "")
+			}
 			return
 		}
 		if delay == 0 {
 			delay = 1
 		}
-		session.instance.urlTestHistoryStorage.StoreForGeneration(session.networkGeneration, target.tag, &adapter.URLTestHistory{
+		history := &adapter.URLTestHistory{
 			Time:   now,
 			Delay:  delay,
 			Status: adapter.URLTestStatusAvailable,
-		})
+		}
+		if session.instance.urlTestHistoryStorage.StoreForGeneration(session.networkGeneration, target.tag, history) {
+			s.emitURLTestResult(session, target.tag, history)
+			session.recordResult(true)
+			s.emitURLTestSession(session, "running", "")
+		}
 	})
 	if s.isCurrentURLTestSession(sessionKey, session) {
 		refreshURLTestGroupSelections(session.instance.outboundManager, groupTag)
 	}
+}
+
+func (s *StartedService) emitURLTestResult(session *urlTestSession, tag string, history *adapter.URLTestHistory) {
+	if session == nil || history == nil || s.urlTestUpdateSubscriber == nil {
+		return
+	}
+	s.urlTestSessionAccess.Lock()
+	s.urlTestResultSequence++
+	revision := s.urlTestResultSequence
+	s.urlTestSessionAccess.Unlock()
+	s.urlTestUpdateSubscriber.Emit(&URLTestUpdate{Result: &URLTestResult{
+		Tag:               tag,
+		MeasuredAtMillis:  history.Time.UnixMilli(),
+		Delay:             int32(history.Delay),
+		Status:            adapter.URLTestHistoryStatus(history),
+		Error:             history.Error,
+		ErrorCode:         history.ErrorCode,
+		Revision:          revision,
+		NetworkGeneration: session.networkGeneration,
+		SessionId:         session.id,
+	}})
+}
+
+func (s *StartedService) emitURLTestSession(session *urlTestSession, state string, terminalReason string) {
+	if session == nil || s.urlTestUpdateSubscriber == nil {
+		return
+	}
+	session.access.Lock()
+	message := &URLTestSessionStatus{
+		SessionId:         session.id,
+		OutboundTag:       session.groupTag,
+		TargetOutboundTag: session.targetTag,
+		Mode:              session.mode,
+		State:             state,
+		TerminalReason:    terminalReason,
+		Total:             int32(session.total),
+		Completed:         int32(session.completedCount),
+		Available:         int32(session.availableCount),
+		Unavailable:       int32(session.unavailableCount),
+		NetworkGeneration: session.networkGeneration,
+	}
+	session.access.Unlock()
+	s.urlTestUpdateSubscriber.Emit(&URLTestUpdate{Session: message})
+}
+
+func (s *StartedService) emitURLTestTerminalSession(session *urlTestSession) {
+	reason := session.terminalReason()
+	state := "completed"
+	if reason != "completed" {
+		state = "cancelled"
+	}
+	s.emitURLTestSession(session, state, reason)
+}
+
+func (s *urlTestSession) recordResult(available bool) {
+	s.access.Lock()
+	s.completedCount++
+	if available {
+		s.availableCount++
+	} else {
+		s.unavailableCount++
+	}
+	s.access.Unlock()
+}
+
+func (s *urlTestSession) requestCancel(reason string) {
+	s.access.Lock()
+	if s.cancelReason == "" {
+		s.cancelReason = reason
+	}
+	s.access.Unlock()
+	s.cancel()
+}
+
+func (s *urlTestSession) terminalReason() string {
+	s.access.Lock()
+	defer s.access.Unlock()
+	if s.cancelReason != "" {
+		return s.cancelReason
+	}
+	if errors.Is(s.ctx.Err(), context.DeadlineExceeded) {
+		return "deadline"
+	}
+	if errors.Is(s.ctx.Err(), context.Canceled) {
+		return "cancelled"
+	}
+	return "completed"
 }
 
 func refreshURLTestGroupSelections(outboundManager adapter.OutboundManager, rootTag string) {
@@ -476,6 +633,7 @@ func (s *StartedService) isCurrentURLTestSession(sessionKey string, session *url
 }
 
 func (s *StartedService) finishURLTestSession(sessionKey string, session *urlTestSession) {
+	s.emitURLTestTerminalSession(session)
 	s.urlTestSessionAccess.Lock()
 	// Briefly retain a successfully drained full queue. A
 	// priority tap can race the final stream delivery; it must not start a
@@ -502,9 +660,33 @@ func (s *StartedService) cancelURLTestSessions() {
 	s.urlTestSessionAccess.Lock()
 	defer s.urlTestSessionAccess.Unlock()
 	for tag, session := range s.urlTestSessions {
-		session.cancel()
+		session.requestCancel("service_stopped")
 		delete(s.urlTestSessions, tag)
 	}
+}
+
+func (s *StartedService) cancelURLTest(request *URLTestCancelRequest) (*emptypb.Empty, error) {
+	if request == nil {
+		return nil, E.New("missing URL test cancellation request")
+	}
+	groupTag := strings.TrimSpace(request.OutboundTag)
+	if groupTag == "" {
+		return nil, E.New("missing outbound group tag")
+	}
+	targetTag := strings.TrimSpace(request.TargetOutboundTag)
+	s.urlTestSessionAccess.Lock()
+	defer s.urlTestSessionAccess.Unlock()
+	for key, session := range s.urlTestSessions {
+		if session.groupTag != groupTag {
+			continue
+		}
+		if targetTag != "" && session.targetTag != targetTag {
+			continue
+		}
+		session.requestCancel("user_cancelled")
+		delete(s.urlTestSessions, key)
+	}
+	return &emptypb.Empty{}, nil
 }
 
 func classifyURLTestError(err error) (string, string) {

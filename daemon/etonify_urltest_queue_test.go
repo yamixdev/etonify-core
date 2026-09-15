@@ -14,7 +14,12 @@ func TestURLTestQueuePriorityDoesNotDuplicateClaimedJobs(t *testing.T) {
 	if a.tag != "a" {
 		t.Fatal(a.tag)
 	}
-	q.prioritize("a")
+	if !q.prioritize("a") {
+		t.Fatal("claimed target must join the owning queue")
+	}
+	if q.prioritize("missing") {
+		t.Fatal("unknown target must not join the queue")
+	}
 	q.prioritize("c")
 	q.prioritize("c")
 	c, _ := q.take()
@@ -124,43 +129,3 @@ func TestURLTestFinishedSessionRetention(t *testing.T) {
 		})
 	}
 }
-
-func TestURLTestTargetedSessionRunsParallelWithFullSession(t *testing.T) {
-	ctxFull, cancelFull := context.WithCancel(context.Background())
-	defer cancelFull()
-	ctxTarget, cancelTarget := context.WithCancel(context.Background())
-	defer cancelTarget()
-
-	sessionFull := &urlTestSession{ctx: ctxFull, cancel: cancelFull, full: true}
-	sessionTarget := &urlTestSession{ctx: ctxTarget, cancel: cancelTarget, full: false}
-
-	targetKey := "select\x00target\x00proxy-1"
-	s := &StartedService{urlTestSessions: map[string]*urlTestSession{
-		"select":  sessionFull,
-		targetKey: sessionTarget,
-	}}
-
-	if !s.isCurrentURLTestSession("select", sessionFull) {
-		t.Fatal("full session is not current")
-	}
-	if !s.isCurrentURLTestSession(targetKey, sessionTarget) {
-		t.Fatal("targeted session is not current")
-	}
-
-	// Targeted session completes without touching the full session
-	s.finishURLTestSession(targetKey, sessionTarget)
-	if s.urlTestSessions[targetKey] != nil {
-		t.Fatal("targeted session was not deleted")
-	}
-	if s.urlTestSessions["select"] != sessionFull {
-		t.Fatal("full session was unexpectedly altered")
-	}
-
-	// cancelURLTestSessions cleans up both full and targeted sessions
-	s.urlTestSessions[targetKey] = sessionTarget
-	s.cancelURLTestSessions()
-	if ctxFull.Err() == nil || ctxTarget.Err() == nil || len(s.urlTestSessions) != 0 {
-		t.Fatal("cancelURLTestSessions failed to clean all sessions")
-	}
-}
-

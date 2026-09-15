@@ -69,9 +69,12 @@ type StartedService struct {
 	startedAt               time.Time
 	urlTestSubscriber       *observable.Subscriber[struct{}]
 	urlTestObserver         *observable.Observer[struct{}]
+	urlTestUpdateSubscriber *observable.Subscriber[*URLTestUpdate]
+	urlTestUpdateObserver   *observable.Observer[*URLTestUpdate]
 	urlTestSessionAccess    sync.Mutex
 	urlTestSessions         map[string]*urlTestSession
 	urlTestSessionSequence  uint64
+	urlTestResultSequence   uint64
 	clashModeSubscriber     *observable.Subscriber[struct{}]
 	clashModeObserver       *observable.Observer[struct{}]
 	notificationSubscriber  *observable.Subscriber[*NotificationEvent]
@@ -113,6 +116,7 @@ func NewStartedService(options ServiceOptions) *StartedService {
 		serviceStatusSubscriber: observable.NewSubscriber[*ServiceStatus](4),
 		logSubscriber:           observable.NewSubscriber[*log.Entry](128),
 		urlTestSubscriber:       observable.NewSubscriber[struct{}](1),
+		urlTestUpdateSubscriber: observable.NewSubscriber[*URLTestUpdate](16384),
 		urlTestSessions:         make(map[string]*urlTestSession),
 		clashModeSubscriber:     observable.NewSubscriber[struct{}](1),
 		notificationSubscriber:  observable.NewSubscriber[*NotificationEvent](notificationQueueSize),
@@ -120,6 +124,7 @@ func NewStartedService(options ServiceOptions) *StartedService {
 	s.serviceStatusObserver = observable.NewObserver(s.serviceStatusSubscriber, 2)
 	s.logObserver = observable.NewObserver(s.logSubscriber, 64)
 	s.urlTestObserver = observable.NewObserver(s.urlTestSubscriber, 1)
+	s.urlTestUpdateObserver = observable.NewObserver(s.urlTestUpdateSubscriber, 16384)
 	s.clashModeObserver = observable.NewObserver(s.clashModeSubscriber, 1)
 	s.notificationObserver = observable.NewObserver(s.notificationSubscriber, notificationQueueSize)
 	return s
@@ -286,7 +291,10 @@ func (s *StartedService) StartOrReloadService(ctx context.Context, profileConten
 		s.serviceAccess.Unlock()
 		return err
 	}
-	instance.urlTestHistoryStorage.AddUpdateHook(s.urlTestSubscriber)
+	// URLTest results use their compact stream. Group snapshots are emitted
+	// only when topology or selection may have changed.
+	instance.urlTestHistoryStorage.SetExternallyManaged(true)
+	instance.urlTestHistoryStorage.AddSelectionUpdateHook(s.urlTestSubscriber)
 	if instance.clashMode != nil {
 		instance.clashMode.AddUpdateHook(s.clashModeSubscriber)
 	}
@@ -326,6 +334,7 @@ func (s *StartedService) Close() {
 	s.serviceStatusSubscriber.Close()
 	s.logSubscriber.Close()
 	s.urlTestSubscriber.Close()
+	s.urlTestUpdateSubscriber.Close()
 	s.clashModeSubscriber.Close()
 	s.notificationSubscriber.Close()
 }
@@ -724,6 +733,37 @@ func (s *StartedService) URLTest(ctx context.Context, request *URLTestRequest) (
 	return s.startURLTest(request)
 }
 
+func (s *StartedService) SubscribeURLTestUpdates(empty *emptypb.Empty, server grpc.ServerStreamingServer[URLTestUpdate]) error {
+	if err := s.waitForStarted(server.Context()); err != nil {
+		return err
+	}
+	subscription, done, err := s.urlTestUpdateObserver.Subscribe()
+	if err != nil {
+		return err
+	}
+	defer s.urlTestUpdateObserver.UnSubscribe(subscription)
+	for {
+		select {
+		case update := <-subscription:
+			if update != nil {
+				if err = server.Send(update); err != nil {
+					return err
+				}
+			}
+		case <-server.Context().Done():
+			return server.Context().Err()
+		case <-s.ctx.Done():
+			return s.ctx.Err()
+		case <-done:
+			return nil
+		}
+	}
+}
+
+func (s *StartedService) CancelURLTest(ctx context.Context, request *URLTestCancelRequest) (*emptypb.Empty, error) {
+	return s.cancelURLTest(request)
+}
+
 func (s *StartedService) SelectOutbound(ctx context.Context, request *SelectOutboundRequest) (*emptypb.Empty, error) {
 	s.serviceAccess.RLock()
 	boxService := s.instance
@@ -742,6 +782,7 @@ func (s *StartedService) SelectOutbound(ctx context.Context, request *SelectOutb
 	if !selector.SelectOutbound(request.OutboundTag) {
 		return nil, status.Error(codes.NotFound, "outbound not found in selector: "+request.OutboundTag)
 	}
+	s.urlTestSubscriber.Emit(struct{}{})
 	return &emptypb.Empty{}, nil
 }
 

@@ -22,10 +22,12 @@ import (
 )
 
 type HistoryStorage struct {
-	access       sync.RWMutex
-	generation   uint64
-	delayHistory map[string]networkHistoryEntry
-	updateHooks  []*observable.Subscriber[struct{}]
+	access               sync.RWMutex
+	generation           uint64
+	delayHistory         map[string]networkHistoryEntry
+	updateHooks          []*observable.Subscriber[struct{}]
+	selectionUpdateHooks []*observable.Subscriber[struct{}]
+	externallyManaged    bool
 }
 
 type networkHistoryEntry struct {
@@ -45,11 +47,44 @@ func (s *HistoryStorage) AddUpdateHook(hook *observable.Subscriber[struct{}]) {
 	s.updateHooks = append(s.updateHooks, hook)
 }
 
+// AddSelectionUpdateHook subscribes only to changes that may alter a URLTest
+// group's selected outbound. Unlike AddUpdateHook, it is not notified for
+// every individual latency result. UI clients can therefore refresh group
+// topology and selection without rebuilding a full snapshot for every probe.
+func (s *HistoryStorage) AddSelectionUpdateHook(hook *observable.Subscriber[struct{}]) {
+	s.access.Lock()
+	defer s.access.Unlock()
+	s.selectionUpdateHooks = append(s.selectionUpdateHooks, hook)
+}
+
+// SetExternallyManaged hands probe scheduling to a graphical client's
+// session manager. URLTest groups continue to consume history for routing,
+// but do not start their own overlapping startup or periodic probes.
+func (s *HistoryStorage) SetExternallyManaged(externallyManaged bool) {
+	s.access.Lock()
+	s.externallyManaged = externallyManaged
+	s.access.Unlock()
+}
+
+func (s *HistoryStorage) ExternallyManaged() bool {
+	if s == nil {
+		return false
+	}
+	s.access.RLock()
+	defer s.access.RUnlock()
+	return s.externallyManaged
+}
+
 func (s *HistoryStorage) NotifyUpdated() {
 	s.access.RLock()
 	updateHooks := append([]*observable.Subscriber[struct{}](nil), s.updateHooks...)
+	selectionUpdateHooks := append(
+		[]*observable.Subscriber[struct{}](nil),
+		s.selectionUpdateHooks...,
+	)
 	s.access.RUnlock()
 	notifyUpdated(updateHooks)
+	notifyUpdated(selectionUpdateHooks)
 }
 
 func (s *HistoryStorage) LoadURLTestHistory(tag string) *adapter.URLTestHistory {
@@ -178,6 +213,7 @@ func (s *HistoryStorage) Close() error {
 	s.access.Lock()
 	defer s.access.Unlock()
 	s.updateHooks = nil
+	s.selectionUpdateHooks = nil
 	return nil
 }
 

@@ -17,7 +17,8 @@ func NewAttachedService(ctx context.Context) *StartedService {
 	s.instance = instance
 	s.serviceStatus = &ServiceStatus{Status: ServiceStatus_STARTED}
 	s.startedAt = time.Now()
-	instance.urlTestHistoryStorage.AddUpdateHook(s.urlTestSubscriber)
+	instance.urlTestHistoryStorage.SetExternallyManaged(true)
+	instance.urlTestHistoryStorage.AddSelectionUpdateHook(s.urlTestSubscriber)
 	if instance.clashMode != nil {
 		instance.clashMode.AddUpdateHook(s.clashModeSubscriber)
 	}

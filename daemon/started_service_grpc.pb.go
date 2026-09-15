@@ -25,6 +25,8 @@ const (
 	StartedService_SubscribeClashMode_FullMethodName             = "/daemon.StartedService/SubscribeClashMode"
 	StartedService_SetClashMode_FullMethodName                   = "/daemon.StartedService/SetClashMode"
 	StartedService_URLTest_FullMethodName                        = "/daemon.StartedService/URLTest"
+	StartedService_SubscribeURLTestUpdates_FullMethodName        = "/daemon.StartedService/SubscribeURLTestUpdates"
+	StartedService_CancelURLTest_FullMethodName                  = "/daemon.StartedService/CancelURLTest"
 	StartedService_LookupOutboundExternalInfo_FullMethodName     = "/daemon.StartedService/LookupOutboundExternalInfo"
 	StartedService_FetchURLViaOutbound_FullMethodName            = "/daemon.StartedService/FetchURLViaOutbound"
 	StartedService_SelectOutbound_FullMethodName                 = "/daemon.StartedService/SelectOutbound"
@@ -75,6 +77,8 @@ type StartedServiceClient interface {
 	SubscribeClashMode(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ClashMode], error)
 	SetClashMode(ctx context.Context, in *ClashMode, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	URLTest(ctx context.Context, in *URLTestRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	SubscribeURLTestUpdates(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (grpc.ServerStreamingClient[URLTestUpdate], error)
+	CancelURLTest(ctx context.Context, in *URLTestCancelRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	LookupOutboundExternalInfo(ctx context.Context, in *OutboundExternalInfoRequest, opts ...grpc.CallOption) (*OutboundExternalInfoResponse, error)
 	FetchURLViaOutbound(ctx context.Context, in *OutboundHTTPFetchRequest, opts ...grpc.CallOption) (*OutboundHTTPFetchResponse, error)
 	SelectOutbound(ctx context.Context, in *SelectOutboundRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -273,6 +277,35 @@ func (c *startedServiceClient) URLTest(ctx context.Context, in *URLTestRequest, 
 	return out, nil
 }
 
+func (c *startedServiceClient) SubscribeURLTestUpdates(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (grpc.ServerStreamingClient[URLTestUpdate], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &StartedService_ServiceDesc.Streams[5], StartedService_SubscribeURLTestUpdates_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[emptypb.Empty, URLTestUpdate]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type StartedService_SubscribeURLTestUpdatesClient = grpc.ServerStreamingClient[URLTestUpdate]
+
+func (c *startedServiceClient) CancelURLTest(ctx context.Context, in *URLTestCancelRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, StartedService_CancelURLTest_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *startedServiceClient) LookupOutboundExternalInfo(ctx context.Context, in *OutboundExternalInfoRequest, opts ...grpc.CallOption) (*OutboundExternalInfoResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(OutboundExternalInfoResponse)
@@ -315,7 +348,7 @@ func (c *startedServiceClient) SetGroupExpand(ctx context.Context, in *SetGroupE
 
 func (c *startedServiceClient) SubscribeConnections(ctx context.Context, in *SubscribeConnectionsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ConnectionEvents], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &StartedService_ServiceDesc.Streams[5], StartedService_SubscribeConnections_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &StartedService_ServiceDesc.Streams[6], StartedService_SubscribeConnections_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -374,7 +407,7 @@ func (c *startedServiceClient) GetStartedAt(ctx context.Context, in *emptypb.Emp
 
 func (c *startedServiceClient) SubscribeOutbounds(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (grpc.ServerStreamingClient[OutboundList], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &StartedService_ServiceDesc.Streams[6], StartedService_SubscribeOutbounds_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &StartedService_ServiceDesc.Streams[7], StartedService_SubscribeOutbounds_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -393,7 +426,7 @@ type StartedService_SubscribeOutboundsClient = grpc.ServerStreamingClient[Outbou
 
 func (c *startedServiceClient) StartNetworkQualityTest(ctx context.Context, in *NetworkQualityTestRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[NetworkQualityTestProgress], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &StartedService_ServiceDesc.Streams[7], StartedService_StartNetworkQualityTest_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &StartedService_ServiceDesc.Streams[8], StartedService_StartNetworkQualityTest_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -412,7 +445,7 @@ type StartedService_StartNetworkQualityTestClient = grpc.ServerStreamingClient[N
 
 func (c *startedServiceClient) StartSTUNTest(ctx context.Context, in *STUNTestRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[STUNTestProgress], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &StartedService_ServiceDesc.Streams[8], StartedService_StartSTUNTest_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &StartedService_ServiceDesc.Streams[9], StartedService_StartSTUNTest_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -431,7 +464,7 @@ type StartedService_StartSTUNTestClient = grpc.ServerStreamingClient[STUNTestPro
 
 func (c *startedServiceClient) SubscribeTailscaleStatus(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TailscaleStatusUpdate], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &StartedService_ServiceDesc.Streams[9], StartedService_SubscribeTailscaleStatus_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &StartedService_ServiceDesc.Streams[10], StartedService_SubscribeTailscaleStatus_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -450,7 +483,7 @@ type StartedService_SubscribeTailscaleStatusClient = grpc.ServerStreamingClient[
 
 func (c *startedServiceClient) StartTailscalePing(ctx context.Context, in *TailscalePingRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TailscalePingResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &StartedService_ServiceDesc.Streams[10], StartedService_StartTailscalePing_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &StartedService_ServiceDesc.Streams[11], StartedService_StartTailscalePing_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -499,7 +532,7 @@ func (c *startedServiceClient) GetTailscaleCertificate(ctx context.Context, in *
 
 func (c *startedServiceClient) StartTailscaleSSHSession(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[TailscaleSSHClientMessage, TailscaleSSHServerMessage], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &StartedService_ServiceDesc.Streams[11], StartedService_StartTailscaleSSHSession_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &StartedService_ServiceDesc.Streams[12], StartedService_StartTailscaleSSHSession_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -512,7 +545,7 @@ type StartedService_StartTailscaleSSHSessionClient = grpc.BidiStreamingClient[Ta
 
 func (c *startedServiceClient) SubscribeTaildropInbox(ctx context.Context, in *SubscribeTaildropInboxRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TaildropInbox], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &StartedService_ServiceDesc.Streams[12], StartedService_SubscribeTaildropInbox_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &StartedService_ServiceDesc.Streams[13], StartedService_SubscribeTaildropInbox_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -541,7 +574,7 @@ func (c *startedServiceClient) MarkTaildropInboxRead(ctx context.Context, in *Ma
 
 func (c *startedServiceClient) SendTaildropFiles(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[TaildropSendClientMessage, TaildropSendServerMessage], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &StartedService_ServiceDesc.Streams[13], StartedService_SendTaildropFiles_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &StartedService_ServiceDesc.Streams[14], StartedService_SendTaildropFiles_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -554,7 +587,7 @@ type StartedService_SendTaildropFilesClient = grpc.BidiStreamingClient[TaildropS
 
 func (c *startedServiceClient) DownloadTaildropFile(ctx context.Context, in *DownloadTaildropFileRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DownloadTaildropFileChunk], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &StartedService_ServiceDesc.Streams[14], StartedService_DownloadTaildropFile_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &StartedService_ServiceDesc.Streams[15], StartedService_DownloadTaildropFile_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -593,7 +626,7 @@ func (c *startedServiceClient) CancelTaildropReceiving(ctx context.Context, in *
 
 func (c *startedServiceClient) ProvideUSBDevices(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[USBProviderMessage, USBServerMessage], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &StartedService_ServiceDesc.Streams[15], StartedService_ProvideUSBDevices_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &StartedService_ServiceDesc.Streams[16], StartedService_ProvideUSBDevices_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -606,7 +639,7 @@ type StartedService_ProvideUSBDevicesClient = grpc.BidiStreamingClient[USBProvid
 
 func (c *startedServiceClient) SubscribeUSBIPServerStatus(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (grpc.ServerStreamingClient[USBIPServerStatusUpdate], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &StartedService_ServiceDesc.Streams[16], StartedService_SubscribeUSBIPServerStatus_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &StartedService_ServiceDesc.Streams[17], StartedService_SubscribeUSBIPServerStatus_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -625,7 +658,7 @@ type StartedService_SubscribeUSBIPServerStatusClient = grpc.ServerStreamingClien
 
 func (c *startedServiceClient) SubscribeOpenConnectStatus(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (grpc.ServerStreamingClient[OpenConnectStatusUpdate], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &StartedService_ServiceDesc.Streams[17], StartedService_SubscribeOpenConnectStatus_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &StartedService_ServiceDesc.Streams[18], StartedService_SubscribeOpenConnectStatus_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -664,7 +697,7 @@ func (c *startedServiceClient) CancelOpenConnectAuthChallenge(ctx context.Contex
 
 func (c *startedServiceClient) SubscribeOpenVPNStatus(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (grpc.ServerStreamingClient[OpenVPNStatusUpdate], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &StartedService_ServiceDesc.Streams[18], StartedService_SubscribeOpenVPNStatus_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &StartedService_ServiceDesc.Streams[19], StartedService_SubscribeOpenVPNStatus_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -703,7 +736,7 @@ func (c *startedServiceClient) CancelOpenVPNChallenge(ctx context.Context, in *O
 
 func (c *startedServiceClient) SubscribeNotifications(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (grpc.ServerStreamingClient[NotificationEvent], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &StartedService_ServiceDesc.Streams[19], StartedService_SubscribeNotifications_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &StartedService_ServiceDesc.Streams[20], StartedService_SubscribeNotifications_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -735,6 +768,8 @@ type StartedServiceServer interface {
 	SubscribeClashMode(*emptypb.Empty, grpc.ServerStreamingServer[ClashMode]) error
 	SetClashMode(context.Context, *ClashMode) (*emptypb.Empty, error)
 	URLTest(context.Context, *URLTestRequest) (*emptypb.Empty, error)
+	SubscribeURLTestUpdates(*emptypb.Empty, grpc.ServerStreamingServer[URLTestUpdate]) error
+	CancelURLTest(context.Context, *URLTestCancelRequest) (*emptypb.Empty, error)
 	LookupOutboundExternalInfo(context.Context, *OutboundExternalInfoRequest) (*OutboundExternalInfoResponse, error)
 	FetchURLViaOutbound(context.Context, *OutboundHTTPFetchRequest) (*OutboundHTTPFetchResponse, error)
 	SelectOutbound(context.Context, *SelectOutboundRequest) (*emptypb.Empty, error)
@@ -810,6 +845,12 @@ func (UnimplementedStartedServiceServer) SetClashMode(context.Context, *ClashMod
 }
 func (UnimplementedStartedServiceServer) URLTest(context.Context, *URLTestRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method URLTest not implemented")
+}
+func (UnimplementedStartedServiceServer) SubscribeURLTestUpdates(*emptypb.Empty, grpc.ServerStreamingServer[URLTestUpdate]) error {
+	return status.Error(codes.Unimplemented, "method SubscribeURLTestUpdates not implemented")
+}
+func (UnimplementedStartedServiceServer) CancelURLTest(context.Context, *URLTestCancelRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method CancelURLTest not implemented")
 }
 func (UnimplementedStartedServiceServer) LookupOutboundExternalInfo(context.Context, *OutboundExternalInfoRequest) (*OutboundExternalInfoResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method LookupOutboundExternalInfo not implemented")
@@ -1090,6 +1131,35 @@ func _StartedService_URLTest_Handler(srv interface{}, ctx context.Context, dec f
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(StartedServiceServer).URLTest(ctx, req.(*URLTestRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StartedService_SubscribeURLTestUpdates_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(emptypb.Empty)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(StartedServiceServer).SubscribeURLTestUpdates(m, &grpc.GenericServerStream[emptypb.Empty, URLTestUpdate]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type StartedService_SubscribeURLTestUpdatesServer = grpc.ServerStreamingServer[URLTestUpdate]
+
+func _StartedService_CancelURLTest_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(URLTestCancelRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StartedServiceServer).CancelURLTest(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StartedService_CancelURLTest_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StartedServiceServer).CancelURLTest(ctx, req.(*URLTestCancelRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1603,6 +1673,10 @@ var StartedService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _StartedService_URLTest_Handler,
 		},
 		{
+			MethodName: "CancelURLTest",
+			Handler:    _StartedService_CancelURLTest_Handler,
+		},
+		{
 			MethodName: "LookupOutboundExternalInfo",
 			Handler:    _StartedService_LookupOutboundExternalInfo_Handler,
 		},
@@ -1699,6 +1773,11 @@ var StartedService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "SubscribeClashMode",
 			Handler:       _StartedService_SubscribeClashMode_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "SubscribeURLTestUpdates",
+			Handler:       _StartedService_SubscribeURLTestUpdates_Handler,
 			ServerStreams: true,
 		},
 		{

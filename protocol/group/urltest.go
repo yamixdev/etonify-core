@@ -285,11 +285,17 @@ func (g *URLTestGroup) PostStart() {
 	defer g.access.Unlock()
 	g.started = true
 	g.lastActive.Store(time.Now())
-	go g.CheckOutbounds(g.ctx, false)
+	if !g.history.ExternallyManaged() {
+		go g.CheckOutbounds(g.ctx, false)
+	}
 }
 
 func (g *URLTestGroup) Touch() {
 	if !g.started {
+		return
+	}
+	if g.history.ExternallyManaged() {
+		g.lastActive.Store(time.Now())
 		return
 	}
 	g.access.Lock()

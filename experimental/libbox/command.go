@@ -7,4 +7,5 @@ const (
 	CommandClashMode
 	CommandConnections
 	CommandOutbounds
+	CommandURLTest
 )

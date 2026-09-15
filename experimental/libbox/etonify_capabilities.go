@@ -9,7 +9,7 @@ import (
 // API v2 makes the detailed XHTTP and VLESS Encryption limits part of the
 // mobile integration contract. Clients must not infer these limits from the
 // coarse supports_* flags.
-const etonifyAPIVersion = 2
+const etonifyAPIVersion = 3
 
 type etonifyCapabilitySet struct {
 	APIVersion                              int      `json:"api_version"`
@@ -30,6 +30,12 @@ type etonifyCapabilitySet struct {
 	SupportsURLTestMethod                   bool     `json:"supports_url_test_method"`
 	SupportsURLTestInterruptDelayThreshold  bool     `json:"supports_url_test_interrupt_delay_threshold"`
 	URLTestCompletionModel                  string   `json:"url_test_completion_model"`
+	SupportsURLTestDeltaStream              bool     `json:"supports_url_test_delta_stream"`
+	SupportsURLTestSessionStatus            bool     `json:"supports_url_test_session_status"`
+	SupportsURLTestResultRevision           bool     `json:"supports_url_test_result_revision"`
+	SupportsURLTestNetworkGeneration        bool     `json:"supports_url_test_network_generation"`
+	SupportsURLTestExhaustive               bool     `json:"supports_url_test_exhaustive"`
+	SupportsURLTestCancel                   bool     `json:"supports_url_test_cancel"`
 	SupportsConfigCheck                     bool     `json:"supports_config_check"`
 	SupportsCloseConnections                bool     `json:"supports_close_connections"`
 	SupportsRealitySpiderX                  bool     `json:"supports_reality_spider_x"`
@@ -69,7 +75,13 @@ func EtonifyCapabilities() string {
 		SupportsURLTestDeadline:           true,
 		SupportsURLTestForce:              true,
 		SupportsURLTestFailover:           true,
-		URLTestCompletionModel:            "group_events",
+		URLTestCompletionModel:            "session_events",
+		SupportsURLTestDeltaStream:        true,
+		SupportsURLTestSessionStatus:      true,
+		SupportsURLTestResultRevision:     true,
+		SupportsURLTestNetworkGeneration:  true,
+		SupportsURLTestExhaustive:         true,
+		SupportsURLTestCancel:             true,
 		SupportsConfigCheck:               true,
 		SupportsCloseConnections:          true,
 		SupportsRealitySpiderX:            true,

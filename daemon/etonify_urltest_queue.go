@@ -7,10 +7,18 @@ import "sync"
 type urlTestQueue struct {
 	access  sync.Mutex
 	pending []urlTestTarget
+	known   map[string]struct{}
 }
 
 func newURLTestQueue(targets []urlTestTarget) *urlTestQueue {
-	return &urlTestQueue{pending: append([]urlTestTarget(nil), targets...)}
+	known := make(map[string]struct{}, len(targets))
+	for _, target := range targets {
+		known[target.tag] = struct{}{}
+	}
+	return &urlTestQueue{
+		pending: append([]urlTestTarget(nil), targets...),
+		known:   known,
+	}
 }
 
 func (q *urlTestQueue) take() (urlTestTarget, bool) {
@@ -25,16 +33,24 @@ func (q *urlTestQueue) take() (urlTestTarget, bool) {
 	return target, true
 }
 
-func (q *urlTestQueue) prioritize(tag string) {
+// prioritize moves a queued target to the front. It also returns true for a
+// target that has already been claimed or completed, allowing a targeted UI
+// request to join the owning full session instead of starting a duplicate
+// network probe.
+func (q *urlTestQueue) prioritize(tag string) bool {
 	q.access.Lock()
 	defer q.access.Unlock()
+	if _, exists := q.known[tag]; !exists {
+		return false
+	}
 	for i, target := range q.pending {
 		if target.tag == tag {
 			copy(q.pending[1:i+1], q.pending[:i])
 			q.pending[0] = target
-			return
+			return true
 		}
 	}
+	return true
 }
 
 func (q *urlTestQueue) remove(tag string) bool {
