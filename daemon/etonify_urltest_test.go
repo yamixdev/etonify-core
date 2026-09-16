@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"errors"
+	"net"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/urltest"
+	M "github.com/sagernet/sing/common/metadata"
 	"github.com/stretchr/testify/require"
 )
 
@@ -170,4 +172,89 @@ func TestRefreshURLTestSelectionsChildrenBeforeParents(t *testing.T) {
 	}
 	refreshURLTestGroupSelections(manager, "select")
 	require.Equal(t, []string{"provider", "lowest", "select"}, order)
+}
+
+type mockLeafOutbound struct {
+	adapter.Outbound
+	tag string
+}
+
+func (m mockLeafOutbound) Tag() string { return m.tag }
+
+func (m mockLeafOutbound) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
+	return nil, errors.New("mock dial error")
+}
+
+func (m mockLeafOutbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
+	return nil, errors.New("mock packet error")
+}
+
+func TestStartURLTestForceDoesNotJoinFullSession(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	leaf1 := mockLeafOutbound{tag: "leaf-1"}
+	leaf2 := mockLeafOutbound{tag: "leaf-2"}
+	manager := selectionTestManager{outbounds: map[string]adapter.Outbound{
+		"leaf-1": leaf1,
+		"leaf-2": leaf2,
+		"select": selectionTestGroup{
+			tag:      "select",
+			children: []string{"leaf-1", "leaf-2"},
+		},
+	}}
+
+	history := urltest.NewHistoryStorage()
+	boxService := &Instance{
+		ctx:                   ctx,
+		outboundManager:       manager,
+		urlTestHistoryStorage: history,
+	}
+
+	s := &StartedService{
+		serviceStatus:   &ServiceStatus{Status: ServiceStatus_STARTED},
+		instance:        boxService,
+		urlTestSessions: make(map[string]*urlTestSession),
+	}
+	defer s.cancelURLTestSessions()
+
+	// 1. Start full session
+	_, err := s.startURLTest(&URLTestRequest{
+		OutboundTag: "select",
+		Mode:        urlTestModeManual,
+	})
+	require.NoError(t, err)
+
+	s.urlTestSessionAccess.Lock()
+	fullSession := s.urlTestSessions["select"]
+	s.urlTestSessionAccess.Unlock()
+	require.NotNil(t, fullSession)
+	require.True(t, fullSession.full)
+
+	// 2. Targeted request without Force should join existing full session
+	_, err = s.startURLTest(&URLTestRequest{
+		OutboundTag:       "select",
+		TargetOutboundTag: "leaf-1",
+		Force:             false,
+	})
+	require.NoError(t, err)
+
+	s.urlTestSessionAccess.Lock()
+	require.Nil(t, s.urlTestSessions["select\x00target\x00leaf-1"])
+	s.urlTestSessionAccess.Unlock()
+
+	// 3. Targeted request WITH Force=true must NOT join full session; creates distinct targeted session
+	_, err = s.startURLTest(&URLTestRequest{
+		OutboundTag:       "select",
+		TargetOutboundTag: "leaf-1",
+		Force:             true,
+	})
+	require.NoError(t, err)
+
+	s.urlTestSessionAccess.Lock()
+	targetSession := s.urlTestSessions["select\x00target\x00leaf-1"]
+	s.urlTestSessionAccess.Unlock()
+	require.NotNil(t, targetSession)
+	require.False(t, targetSession.full)
+	require.Equal(t, "leaf-1", targetSession.targetTag)
 }

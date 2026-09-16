@@ -118,7 +118,7 @@ func (s *StartedService) startURLTest(request *URLTestRequest) (*emptypb.Empty, 
 	}
 
 	s.urlTestSessionAccess.Lock()
-	if isTargeted {
+	if isTargeted && !request.Force {
 		if existingFull := s.urlTestSessions[groupTag]; existingFull != nil &&
 			existingFull.instance == boxService && existingFull.full &&
 			existingFull.ctx.Err() == nil && existingFull.networkGeneration == boxService.urlTestHistoryStorage.Generation() &&
