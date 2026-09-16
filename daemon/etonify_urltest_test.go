@@ -257,4 +257,6 @@ func TestStartURLTestForceDoesNotJoinFullSession(t *testing.T) {
 	require.NotNil(t, targetSession)
 	require.False(t, targetSession.full)
 	require.Equal(t, "leaf-1", targetSession.targetTag)
+	require.True(t, fullSession.isSuppressed("leaf-1"))
+	require.False(t, fullSession.queue.remove("leaf-1"))
 }

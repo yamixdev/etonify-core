@@ -54,6 +54,7 @@ type urlTestSession struct {
 	availableCount    int
 	unavailableCount  int
 	cancelReason      string
+	suppressedTags    map[string]struct{}
 }
 
 type urlTestSessionOptions struct {
@@ -118,17 +119,25 @@ func (s *StartedService) startURLTest(request *URLTestRequest) (*emptypb.Empty, 
 	}
 
 	s.urlTestSessionAccess.Lock()
-	if isTargeted && !request.Force {
+	if isTargeted {
 		if existingFull := s.urlTestSessions[groupTag]; existingFull != nil &&
 			existingFull.instance == boxService && existingFull.full &&
-			existingFull.ctx.Err() == nil && existingFull.networkGeneration == boxService.urlTestHistoryStorage.Generation() &&
-			existingFull.queue != nil && existingFull.queue.prioritize(targets[0].tag) {
-			// The full session owns this leaf. A tap only promotes a queued
-			// target; claimed/completed targets join the existing work.
-			s.urlTestSessionAccess.Unlock()
-			s.serviceAccess.RUnlock()
-			cancel()
-			return &emptypb.Empty{}, nil
+			existingFull.ctx.Err() == nil && existingFull.networkGeneration == boxService.urlTestHistoryStorage.Generation() {
+
+			if !request.Force && existingFull.queue != nil && existingFull.queue.prioritize(targets[0].tag) {
+				// The full session owns this leaf. A tap only promotes a queued
+				// target; claimed/completed targets join the existing work.
+				s.urlTestSessionAccess.Unlock()
+				s.serviceAccess.RUnlock()
+				cancel()
+				return &emptypb.Empty{}, nil
+			}
+			if request.Force {
+				if existingFull.queue != nil {
+					existingFull.queue.remove(targets[0].tag)
+				}
+				existingFull.suppress(targets[0].tag)
+			}
 		}
 	}
 	if existing := s.urlTestSessions[sessionKey]; existing != nil {
@@ -433,6 +442,10 @@ func (s *StartedService) runURLTestSession(ctx context.Context, sessionKey strin
 		if ctx.Err() != nil {
 			return
 		}
+		if session.isSuppressed(target.tag) {
+			session.recordResult(err == nil)
+			return
+		}
 		now := time.Now()
 		if err != nil {
 			errorCode, errorMessage := classifyURLTestError(err)
@@ -529,6 +542,25 @@ func (s *urlTestSession) recordResult(available bool) {
 		s.unavailableCount++
 	}
 	s.access.Unlock()
+}
+
+func (s *urlTestSession) suppress(tag string) {
+	s.access.Lock()
+	defer s.access.Unlock()
+	if s.suppressedTags == nil {
+		s.suppressedTags = make(map[string]struct{})
+	}
+	s.suppressedTags[tag] = struct{}{}
+}
+
+func (s *urlTestSession) isSuppressed(tag string) bool {
+	s.access.Lock()
+	defer s.access.Unlock()
+	if len(s.suppressedTags) == 0 {
+		return false
+	}
+	_, ok := s.suppressedTags[tag]
+	return ok
 }
 
 func (s *urlTestSession) requestCancel(reason string) {
