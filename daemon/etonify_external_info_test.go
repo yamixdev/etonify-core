@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -45,6 +46,25 @@ func TestExternalInfoFallsBackToSecondSource(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "198.51.100.8", info.ip)
 	require.Equal(t, int32(2), calls.Load())
+}
+
+func TestExternalInfoFallsBackThroughConfiguredSources(t *testing.T) {
+	var calls atomic.Int32
+	client := &http.Client{Transport: externalInfoRoundTripper(func(request *http.Request) (*http.Response, error) {
+		calls.Add(1)
+		switch {
+		case strings.Contains(request.URL.Host, "1.1.1.1"):
+			return nil, io.EOF
+		case strings.Contains(request.URL.Host, "cloudflare.com"):
+			return nil, errors.New("connection reset by peer")
+		default:
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("198.51.100.9"))}, nil
+		}
+	})}
+	info, err := fetchOutboundExternalInfoFromSources(context.Background(), client, outboundExternalInfoSources)
+	require.NoError(t, err)
+	require.Equal(t, "198.51.100.9", info.ip)
+	require.Equal(t, int32(3), calls.Load())
 }
 
 func TestExternalInfoCacheFreshAndStaleWindows(t *testing.T) {

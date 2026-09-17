@@ -23,10 +23,11 @@ import (
 )
 
 const (
-	externalInfoPrimaryEndpoint  = "https://cloudflare.com/cdn-cgi/trace"
-	externalInfoFallbackEndpoint = "https://api64.ipify.org"
+	externalInfoPrimaryEndpoint  = "https://1.1.1.1/cdn-cgi/trace"
+	externalInfoDomainEndpoint   = "https://cloudflare.com/cdn-cgi/trace"
+	externalInfoFallbackEndpoint = "https://api.ipify.org"
 	externalInfoAttemptTimeout   = 2 * time.Second
-	externalInfoTimeout          = 4500 * time.Millisecond
+	externalInfoTimeout          = 5500 * time.Millisecond
 	externalInfoCacheTTL         = 30 * time.Second
 	externalInfoStaleTTL         = 2 * time.Minute
 	externalInfoMaxBytes         = 64 * 1024
@@ -59,7 +60,8 @@ type outboundExternalInfoSource struct {
 }
 
 var outboundExternalInfoSources = []outboundExternalInfoSource{
-	{name: "cloudflare", endpoint: externalInfoPrimaryEndpoint, parse: parseOutboundExternalInfo},
+	{name: "cloudflare-direct", endpoint: externalInfoPrimaryEndpoint, parse: parseOutboundExternalInfo},
+	{name: "cloudflare-domain", endpoint: externalInfoDomainEndpoint, parse: parseOutboundExternalInfo},
 	{name: "ipify", endpoint: externalInfoFallbackEndpoint, parse: parsePlainExternalIP},
 }
 
