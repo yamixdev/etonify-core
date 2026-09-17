@@ -147,9 +147,14 @@ type selectionTestGroup struct {
 	refresh  func()
 }
 
+func (g selectionTestGroup) Tag() string              { return g.tag }
 func (g selectionTestGroup) Now() string              { return "" }
 func (g selectionTestGroup) All() []string            { return g.children }
-func (g selectionTestGroup) RefreshURLTestSelection() { g.refresh() }
+func (g selectionTestGroup) RefreshURLTestSelection() {
+	if g.refresh != nil {
+		g.refresh()
+	}
+}
 
 func TestRefreshURLTestSelectionsChildrenBeforeParents(t *testing.T) {
 	var order []string

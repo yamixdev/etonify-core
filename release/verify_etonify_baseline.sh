@@ -6,7 +6,7 @@ repository_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${repository_root}"
 
 # shellcheck disable=SC1091
-source release/ETONIFY_BASELINE
+eval "$(tr -d '\r' < release/ETONIFY_BASELINE)"
 
 etonify_version="$(tr -d '\r\n' < release/ETONIFY_VERSION)"
 etonify_version_prefix="${UPSTREAM_TAG}-etonify."

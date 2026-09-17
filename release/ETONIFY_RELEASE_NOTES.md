@@ -1,5 +1,11 @@
 ## Etonify Core 1.15 alpha test base
 
+### 1.15.0-alpha.3-etonify.2
+
+- Stream progressive URLTest results to the client as each proxy check completes.
+- Support concurrent targeted/manual URLTest checks during running full sweeps without being swallowed.
+- Enhance external IP lookup resilience with direct 1.1.1.1 query, domain fallback, and pure IPv4 ipify.
+
 ### 1.15.0-alpha.3-etonify.1
 
 - Use the new sing-tun TCP/IP stack by default. The legacy system, gVisor and mixed stacks remain available as compatibility modes.
