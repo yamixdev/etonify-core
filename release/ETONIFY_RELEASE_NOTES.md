@@ -5,6 +5,11 @@
 - Stream progressive URLTest results to the client as each proxy check completes.
 - Support concurrent targeted/manual URLTest checks during running full sweeps without being swallowed.
 - Enhance external IP lookup resilience with direct 1.1.1.1 query, domain fallback, and pure IPv4 ipify.
+- Fix duplicate DNS queries bypassing deduplication after failed exchange (`exchangePending` async pipeline).
+- Bind network reset dispatch to manager lifecycle, fixing interface monitor teardown races on network switches.
+- Update `bbolt` to eliminate crash on corrupted cache database files.
+- Update `sing` and `sing-tun` with closed connection handling on Windows and iptables auto-redirect DNS hijack fixes.
+- Prevent memory pressure callbacks from restarting stopped OOM killer timers on Darwin.
 
 ### 1.15.0-alpha.3-etonify.1
 
