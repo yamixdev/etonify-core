@@ -17,12 +17,8 @@ func TestEtonifyConfigCorpus(t *testing.T) {
 			[]any{etonifyTUNInbound("system"), etonifyMixedInbound()},
 			[]any{etonifySelector(), etonifyDirect()},
 		),
-		"gVisor TUN": etonifyConfig(
-			[]any{etonifyTUNInbound("gvisor")},
-			[]any{etonifySelector(), etonifyDirect()},
-		),
-		"mixed TUN": etonifyConfig(
-			[]any{etonifyTUNInbound("mixed")},
+		"native TUN": etonifyConfig(
+			[]any{etonifyTUNInbound("")},
 			[]any{etonifySelector(), etonifyDirect()},
 		),
 		"typed DNS presets": etonifyDNSPresetConfig(),

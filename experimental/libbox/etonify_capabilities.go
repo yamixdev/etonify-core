@@ -99,9 +99,9 @@ func EtonifyCapabilities() string {
 		VLESSEncryptionMaxRelays:          8,
 		VLESSEncryptionHandshakeTimeoutMS: 12_000,
 		// "native" means the sing-tun stack introduced in sing-box 1.15. It is
-		// selected by omitting the deprecated TUN `stack` field. The remaining
-		// values stay available as explicit compatibility modes.
-		TUNStacks: []string{"native", "system", "gvisor", "mixed"},
+		// selected by omitting the deprecated TUN `stack` field. "system"
+		// remains available as an explicit compatibility mode.
+		TUNStacks: []string{"native", "system"},
 	}
 	content, err := json.Marshal(capabilities)
 	if err != nil {

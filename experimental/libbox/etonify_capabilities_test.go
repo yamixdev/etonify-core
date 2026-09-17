@@ -53,6 +53,6 @@ func TestEtonifyCapabilities(t *testing.T) {
 	require.Equal(t, []string{"1rtt", "0rtt", "native", "xorpub", "random", "x25519", "mlkem768"}, capabilities.VLESSEncryptionModes)
 	require.Equal(t, 8, capabilities.VLESSEncryptionMaxRelays)
 	require.Equal(t, 12_000, capabilities.VLESSEncryptionHandshakeTimeoutMS)
-	require.Equal(t, []string{"native", "system", "gvisor", "mixed"}, capabilities.TUNStacks)
+	require.Equal(t, []string{"native", "system"}, capabilities.TUNStacks)
 	require.Equal(t, content, EtonifyCapabilities())
 }
