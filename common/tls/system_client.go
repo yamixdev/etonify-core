@@ -55,6 +55,12 @@ func ValidateSystemTLSOptions(ctx context.Context, options option.OutboundTLSOpt
 	if len(options.CertificatePublicKeySHA256) > 0 && (len(options.Certificate) > 0 || options.CertificatePath != "") {
 		return SystemTLSValidated{}, E.New("certificate_public_key_sha256 is conflict with certificate or certificate_path")
 	}
+	if len(options.CertificateSHA256) > 0 && (len(options.Certificate) > 0 || options.CertificatePath != "") {
+		return SystemTLSValidated{}, E.New("certificate_sha256 is conflict with certificate or certificate_path")
+	}
+	if len(options.CertificateSHA256) > 0 && len(options.CertificatePublicKeySHA256) > 0 {
+		return SystemTLSValidated{}, E.New("certificate_sha256 is conflict with certificate_public_key_sha256")
+	}
 	var minVersion uint16
 	if options.MinVersion != "" {
 		parsed, err := ParseTLSVersion(options.MinVersion)

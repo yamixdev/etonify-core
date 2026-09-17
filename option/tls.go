@@ -2,6 +2,8 @@ package option
 
 import (
 	"crypto/tls"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"strings"
 
@@ -118,6 +120,7 @@ type OutboundTLSOptions struct {
 	Certificate                badoption.Listable[string]          `json:"certificate,omitempty"`
 	CertificatePath            string                              `json:"certificate_path,omitempty"`
 	CertificatePublicKeySHA256 badoption.Listable[[]byte]          `json:"certificate_public_key_sha256,omitempty"`
+	CertificateSHA256          badoption.Listable[CertificateHash] `json:"certificate_sha256,omitempty"`
 	ClientCertificate          badoption.Listable[string]          `json:"client_certificate,omitempty"`
 	ClientCertificatePath      string                              `json:"client_certificate_path,omitempty"`
 	ClientKey                  badoption.Listable[string]          `json:"client_key,omitempty"`
@@ -255,3 +258,45 @@ type OutboundRealityOptions struct {
 	ShortID   string `json:"short_id,omitempty"`
 	SpiderX   string `json:"spider_x,omitempty"`
 }
+
+type CertificateHash []byte
+
+func (h *CertificateHash) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return err
+	}
+	s = strings.TrimSpace(s)
+	cleaned := strings.ReplaceAll(s, ":", "")
+	cleaned = strings.ReplaceAll(cleaned, " ", "")
+	cleaned = strings.ReplaceAll(cleaned, "-", "")
+
+	if len(cleaned) == 64 {
+		if decoded, err := hex.DecodeString(cleaned); err == nil {
+			*h = decoded
+			return nil
+		}
+	}
+	if decoded, err := base64.StdEncoding.DecodeString(s); err == nil && len(decoded) == 32 {
+		*h = decoded
+		return nil
+	}
+	if decoded, err := base64.RawStdEncoding.DecodeString(s); err == nil && len(decoded) == 32 {
+		*h = decoded
+		return nil
+	}
+	if decoded, err := hex.DecodeString(cleaned); err == nil {
+		*h = decoded
+		return nil
+	}
+	return E.New("invalid certificate sha256 hash: ", s)
+}
+
+func (h CertificateHash) MarshalJSON() ([]byte, error) {
+	return json.Marshal(hex.EncodeToString(h))
+}
+
+func (h CertificateHash) DescribeSchema(builder schema.Builder) (*schema.Node, error) {
+	return schema.StringNode(), nil
+}
+

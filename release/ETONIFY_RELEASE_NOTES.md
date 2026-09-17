@@ -1,5 +1,11 @@
 ## Etonify Core 1.15 alpha test base
 
+### 1.15.0-alpha.3-etonify.3
+
+- Add `certificate_sha256` outbound TLS option for whole-certificate SHA256 pinning (Xray `pinnedPeerCertSha256` parity).
+- Support leaf certificate pinning and intermediate/root CA pinning across standard Go TLS, uTLS, Windows and Apple TLS engines.
+- Add flexible parsing for hex with colons/spaces/hyphens, plain hex, and Base64 certificate hashes.
+
 ### 1.15.0-alpha.3-etonify.2
 
 - Stream progressive URLTest results to the client as each proxy check completes.

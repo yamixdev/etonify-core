@@ -137,6 +137,13 @@ func (c *appleClientConfig) ClientHandshake(ctx context.Context, conn net.Conn) 
 			C.box_apple_tls_client_free(client)
 			return nil, err
 		}
+	} else if len(c.certificateSHA256) > 0 {
+		err = VerifyCertificateSHA256(c.certificateSHA256, rawCerts, c.serverName, nil)
+		if err != nil {
+			C.box_apple_tls_client_cancel(client)
+			C.box_apple_tls_client_free(client)
+			return nil, err
+		}
 	}
 
 	return &appleTLSConn{
