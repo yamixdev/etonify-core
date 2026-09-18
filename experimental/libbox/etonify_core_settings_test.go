@@ -1,4 +1,4 @@
-//go:build with_gvisor && with_quic && with_utls
+//go:build with_quic && with_utls
 
 package libbox
 
