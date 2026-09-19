@@ -1,5 +1,16 @@
 ## Etonify Core 1.15 alpha test base
 
+### 1.15.0-alpha.3-etonify.5
+
+- Verify full NaiveProxy (`with_naive_outbound`) and AnyTLS compilation in core builds.
+- Sanitize NaiveProxy Cronet TLS configurations, rejecting incompatible TLS fields to prevent startup crashes.
+- Support AnyTLS `client_metadata`, `idle_session_check_interval`, `idle_session_timeout`, and `min_idle_session`.
+
+### 1.15.0-alpha.3-etonify.4
+
+- Fix full URLTest deadline truncations and responsive progress tracking during concurrent sweeps.
+- Protect background URLTest from premature timeouts across large proxy catalogs.
+
 ### 1.15.0-alpha.3-etonify.3
 
 - Add `certificate_sha256` outbound TLS option for whole-certificate SHA256 pinning (Xray `pinnedPeerCertSha256` parity).
