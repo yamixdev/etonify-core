@@ -91,10 +91,9 @@ func TestXmuxZeroConfigurationUsesBoundedDefaults(t *testing.T) {
 func TestAutoModeSelection(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, "packet-up", resolveMode("auto", false, false))
-	require.Equal(t, "stream-up", resolveMode("auto", true, false))
-	require.Equal(t, "stream-one", resolveMode("auto", true, true))
-	require.Equal(t, "packet-up", resolveMode("packet-up", true, true))
+	require.Equal(t, "packet-up", resolveMode("auto", false))
+	require.Equal(t, "stream-one", resolveMode("auto", true))
+	require.Equal(t, "packet-up", resolveMode("packet-up", true))
 }
 
 func TestHTTP2KeepAlivePeriodIsBounded(t *testing.T) {

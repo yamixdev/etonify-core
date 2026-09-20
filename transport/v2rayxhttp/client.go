@@ -196,7 +196,7 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 
 	mode := c.config.mode
 	if mode == "" || mode == "auto" {
-		mode = resolveMode(mode, c.http2, c.reality)
+		mode = resolveMode(mode, c.reality)
 	}
 	var sessionID string
 	if mode != "stream-one" {
@@ -488,15 +488,12 @@ func (c *Client) close() error {
 	return closeErr
 }
 
-func resolveMode(mode string, http2Enabled bool, realityEnabled bool) string {
+func resolveMode(mode string, realityEnabled bool) string {
 	if mode != "" && mode != "auto" {
 		return mode
 	}
 	if realityEnabled {
 		return "stream-one"
-	}
-	if http2Enabled {
-		return "stream-up"
 	}
 	return "packet-up"
 }
