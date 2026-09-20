@@ -8,6 +8,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"strconv"
 	"sync"
@@ -29,9 +30,9 @@ const (
 	hardXmuxPoolLimit    = 16
 	maxPacketUploadBytes = 256 * 1024
 	packetUploadTimeout  = 30 * time.Second
-	defaultH2ReadIdle    = 30 * time.Second
-	minimumH2ReadIdle    = 5 * time.Second
-	maximumH2ReadIdle    = 5 * time.Minute
+	establishmentTimeout = 15 * time.Second
+	defaultHTTPIdle      = 300 * time.Second
+	defaultH2ReadIdle    = 45 * time.Second
 )
 
 var _ adapter.V2RayClientTransport = (*Client)(nil)
@@ -62,6 +63,11 @@ type Client struct {
 }
 
 func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, options option.V2RayXHTTPOptions, tlsConfig tls.Config) (*Client, error) {
+	if options.Xmux != nil &&
+		rangeHasPositiveValue(options.Xmux.MaxConnections) &&
+		rangeHasPositiveValue(options.Xmux.MaxConcurrency) {
+		return nil, E.New("xhttp: xmux max_connections cannot be used with max_concurrency")
+	}
 	config := newConfig(options)
 	if err := config.validate(); err != nil {
 		return nil, err
@@ -123,17 +129,15 @@ func (c *Client) createHTTPClient() *http.Client {
 			DialTLSContext: func(ctx context.Context, network, addr string, config *tls.STDConfig) (net.Conn, error) {
 				return tlsDialer.DialTLSContext(ctx, M.ParseSocksaddr(addr))
 			},
-			IdleConnTimeout:  90 * time.Second,
-			ReadIdleTimeout:  c.http2ReadIdleTimeout(),
-			PingTimeout:      15 * time.Second,
-			WriteByteTimeout: 30 * time.Second,
+			IdleConnTimeout: defaultHTTPIdle,
+			ReadIdleTimeout: c.http2ReadIdleTimeout(),
 		}
 	} else {
 		transport = &http.Transport{
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 				return c.dialer.DialContext(ctx, network, M.ParseSocksaddr(addr))
 			},
-			IdleConnTimeout:   90 * time.Second,
+			IdleConnTimeout:   defaultHTTPIdle,
 			DisableKeepAlives: true,
 		}
 	}
@@ -152,19 +156,17 @@ func (c *Client) http2ReadIdleTimeout() time.Duration {
 	if c.options.Xmux.HKeepAlivePeriod < 0 {
 		return 0
 	}
-	period := time.Duration(c.options.Xmux.HKeepAlivePeriod)
-	period = min(max(period, minimumH2ReadIdle/time.Second), maximumH2ReadIdle/time.Second)
-	return period * time.Second
+	return time.Duration(c.options.Xmux.HKeepAlivePeriod) * time.Second
 }
 
 func (c *Client) getHTTPClient(ctx context.Context) (*httpClientLease, error) {
-	if c.options.Xmux == nil {
-		return &httpClientLease{client: c.createHTTPClient(), owned: true}, nil
-	}
-
 	c.xmuxAccess.Lock()
 	if c.xmuxManager == nil {
-		c.xmuxManager = newXmuxManager(c.options.Xmux, c.createHTTPClient)
+		xmuxConfig := c.options.Xmux
+		if xmuxConfig == nil {
+			xmuxConfig = &option.V2RayXHTTPXmuxConfig{}
+		}
+		c.xmuxManager = newXmuxManager(xmuxConfig, c.createHTTPClient)
 	}
 	manager := c.xmuxManager
 	c.xmuxAccess.Unlock()
@@ -184,10 +186,16 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 	if !available {
 		return nil, net.ErrClosed
 	}
-	requestContext, cancelRequests := context.WithCancel(ctx)
+	requestContext, cancelRequests := context.WithCancel(context.WithoutCancel(ctx))
 	stopLifecycleCancel := context.AfterFunc(c.lifecycleContext, cancelRequests)
+	establishmentContext, cancelEstablishment := context.WithTimeout(requestContext, establishmentTimeout)
+	stopCallerCancel := context.AfterFunc(ctx, cancelEstablishment)
+	defer func() {
+		stopCallerCancel()
+		cancelEstablishment()
+	}()
 
-	httpLease, err := c.getHTTPClient(requestContext)
+	httpLease, err := c.getHTTPClient(establishmentContext)
 	if err != nil {
 		stopLifecycleCancel()
 		cancelRequests()
@@ -230,11 +238,14 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 
 	switch mode {
 	case "stream-one":
-		err = c.dialStreamOne(requestContext, httpLease, downloadReader, uploadReader)
+		err = c.dialStreamOne(requestContext, establishmentContext, httpLease, downloadReader, uploadReader)
 	case "stream-up":
 		err = c.dialStreamUp(requestContext, httpLease, downloadReader, sessionID, uploadReader)
 	default:
 		err = c.dialPacketUp(requestContext, httpLease, downloadReader, sessionID, uploadReader)
+	}
+	if err == nil && mode != "stream-one" {
+		err = downloadReader.Wait(establishmentContext)
 	}
 	if err != nil {
 		_ = conn.Close()
@@ -284,28 +295,51 @@ func (c *Client) buildRequest(ctx context.Context, method string, sessionID stri
 	return request, nil
 }
 
-func (c *Client) dialStreamOne(ctx context.Context, lease *httpClientLease, download *waitReadCloser, upload *io.PipeReader) error {
-	request, err := c.buildRequest(ctx, c.config.uplinkHTTPMethod, "", "", upload)
+func (c *Client) dialStreamOne(ctx context.Context, establishmentContext context.Context, lease *httpClientLease, download *waitReadCloser, upload *io.PipeReader) error {
+	connected := make(chan struct{})
+	var connectedOnce sync.Once
+	traceContext := httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+		GotConn: func(httptrace.GotConnInfo) {
+			connectedOnce.Do(func() { close(connected) })
+		},
+	})
+	request, err := c.buildRequest(traceContext, c.config.uplinkHTTPMethod, "", "", upload)
 	if err != nil {
 		return err
 	}
+	result := make(chan error, 1)
 	lease.consumeRequest()
 	go func() {
 		response, doErr := lease.client.Do(request)
 		if doErr != nil {
 			_ = upload.CloseWithError(doErr)
 			download.Fail(doErr)
+			result <- doErr
 			return
 		}
 		if response.StatusCode != http.StatusOK {
 			statusErr := unexpectedStatus("stream-one", response)
 			_ = upload.CloseWithError(statusErr)
 			download.Fail(statusErr)
+			result <- statusErr
 			return
 		}
 		download.Set(response.Body)
+		result <- nil
 	}()
-	return nil
+	select {
+	case <-connected:
+		select {
+		case resultErr := <-result:
+			return resultErr
+		default:
+			return nil
+		}
+	case resultErr := <-result:
+		return resultErr
+	case <-establishmentContext.Done():
+		return establishmentContext.Err()
+	}
 }
 
 func (c *Client) dialStreamUp(ctx context.Context, lease *httpClientLease, download *waitReadCloser, sessionID string, upload *io.PipeReader) error {
@@ -575,7 +609,8 @@ func newXmuxManager(config *option.V2RayXHTTPXmuxConfig, newFunc func() *http.Cl
 	}
 	manager.useSafeDefaults = xmuxSettingsAreZero(config)
 	if manager.useSafeDefaults {
-		manager.concurrency = randRange(16, 32)
+		manager.desiredConnections = 3
+		manager.maxConnections = 3
 	} else {
 		manager.concurrency = positiveRangeValue(config.MaxConcurrency)
 	}

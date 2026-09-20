@@ -1,6 +1,7 @@
 package v2rayxhttp
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net"
@@ -189,9 +190,8 @@ func (c *splitConn) closeReader() error {
 	return c.readerCloseErr
 }
 
-// waitReadCloser lets DialContext return before the download response arrives.
-// Its state is protected because HTTP completion and connection cancellation
-// run on different goroutines.
+// waitReadCloser coordinates HTTP response establishment, reads, and
+// connection cancellation that may run on different goroutines.
 type waitReadCloser struct {
 	access sync.Mutex
 	ready  chan struct{}
@@ -227,6 +227,29 @@ func (w *waitReadCloser) Fail(err error) {
 		w.signalLocked()
 	}
 	w.access.Unlock()
+}
+
+func (w *waitReadCloser) Wait(ctx context.Context) error {
+	select {
+	case <-w.ready:
+		w.access.Lock()
+		reader := w.reader
+		err := w.err
+		closed := w.closed
+		w.access.Unlock()
+		if reader != nil {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if closed {
+			return io.ErrClosedPipe
+		}
+		return io.ErrUnexpectedEOF
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (w *waitReadCloser) Read(buffer []byte) (int, error) {

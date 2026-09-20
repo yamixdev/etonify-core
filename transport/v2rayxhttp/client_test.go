@@ -73,18 +73,27 @@ func TestXmuxZeroConfigurationUsesBoundedDefaults(t *testing.T) {
 		return &http.Client{Transport: rejectingRoundTripper{}}
 	})
 	require.True(t, manager.useSafeDefaults)
-	require.GreaterOrEqual(t, manager.concurrency, int32(16))
-	require.LessOrEqual(t, manager.concurrency, int32(32))
-	require.Equal(t, hardXmuxPoolLimit, manager.maxConnections)
+	require.Zero(t, manager.concurrency)
+	require.Equal(t, 3, manager.desiredConnections)
+	require.Equal(t, 3, manager.maxConnections)
 
-	lease, err := manager.acquire(context.Background())
-	require.NoError(t, err)
+	leasing := make([]*xmuxLease, 0, 3)
+	for range 3 {
+		lease, err := manager.acquire(context.Background())
+		require.NoError(t, err)
+		leasing = append(leasing, lease)
+	}
 	manager.access.Lock()
-	require.GreaterOrEqual(t, lease.client.leftRequests, int32(600))
-	require.LessOrEqual(t, lease.client.leftRequests, int32(900))
-	require.False(t, lease.client.unreusableAt.IsZero())
+	require.Len(t, manager.clients, 3)
+	for _, client := range manager.clients {
+		require.GreaterOrEqual(t, client.leftRequests, int32(600))
+		require.LessOrEqual(t, client.leftRequests, int32(900))
+		require.False(t, client.unreusableAt.IsZero())
+	}
 	manager.access.Unlock()
-	lease.release()
+	for index := range leasing {
+		leasing[index].release()
+	}
 	manager.closeAll()
 }
 
@@ -96,19 +105,181 @@ func TestAutoModeSelection(t *testing.T) {
 	require.Equal(t, "packet-up", resolveMode("packet-up", true))
 }
 
-func TestHTTP2KeepAlivePeriodIsBounded(t *testing.T) {
+func TestDialContextWaitsForDownloadResponse(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, defaultH2ReadIdle, (&Client{}).http2ReadIdleTimeout())
+	requestStarted := make(chan struct{})
+	releaseResponse := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		close(requestStarted)
+		<-releaseResponse
+		writer.WriteHeader(http.StatusOK)
+		writer.(http.Flusher).Flush()
+		<-request.Context().Done()
+	}))
+	defer server.Close()
+
+	client := newPlainTestClient(t, server.URL, option.V2RayXHTTPOptions{Mode: "packet-up"})
+	dialResult := make(chan struct {
+		conn net.Conn
+		err  error
+	}, 1)
+	go func() {
+		conn, err := client.DialContext(context.Background())
+		dialResult <- struct {
+			conn net.Conn
+			err  error
+		}{conn: conn, err: err}
+	}()
+
+	<-requestStarted
+	var earlyResult *struct {
+		conn net.Conn
+		err  error
+	}
+	select {
+	case result := <-dialResult:
+		earlyResult = &result
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(releaseResponse)
+	if earlyResult != nil {
+		if earlyResult.conn != nil {
+			_ = earlyResult.conn.Close()
+		}
+		_ = client.Close()
+		t.Fatal("DialContext returned before the download response was ready")
+	}
+	result := <-dialResult
+	require.NoError(t, result.err)
+	require.NotNil(t, result.conn)
+	require.NoError(t, result.conn.Close())
+	require.NoError(t, client.Close())
+}
+
+func TestDialContextReturnsDownloadStatusFailure(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	client := newPlainTestClient(t, server.URL, option.V2RayXHTTPOptions{Mode: "packet-up"})
+	conn, err := client.DialContext(context.Background())
+	require.Nil(t, conn)
+	require.ErrorContains(t, err, "unexpected stream-down status: 404 Not Found")
+	require.NoError(t, client.Close())
+}
+
+func TestCallerCancellationAfterDialDoesNotCancelSession(t *testing.T) {
+	t.Parallel()
+
+	const payload = "session-survived"
+	responseReady := make(chan struct{})
+	sendPayload := make(chan struct{})
+	serverCanceled := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.WriteHeader(http.StatusOK)
+		writer.(http.Flusher).Flush()
+		close(responseReady)
+		select {
+		case <-sendPayload:
+			_, _ = io.WriteString(writer, payload)
+			writer.(http.Flusher).Flush()
+			<-request.Context().Done()
+		case <-request.Context().Done():
+			close(serverCanceled)
+		}
+	}))
+	defer server.Close()
+
+	client := newPlainTestClient(t, server.URL, option.V2RayXHTTPOptions{Mode: "packet-up"})
+	dialContext, cancelDial := context.WithCancel(context.Background())
+	conn, err := client.DialContext(dialContext)
+	require.NoError(t, err)
+	<-responseReady
+	cancelDial()
+
+	select {
+	case <-serverCanceled:
+		_ = conn.Close()
+		t.Fatal("caller cancellation terminated an established XHTTP session")
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(sendPayload)
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(time.Second)))
+	received := make([]byte, len(payload))
+	_, err = io.ReadFull(conn, received)
+	require.NoError(t, err)
+	require.Equal(t, payload, string(received))
+	require.NoError(t, conn.Close())
+	require.NoError(t, client.Close())
+}
+
+func newPlainTestClient(t *testing.T, rawURL string, options option.V2RayXHTTPOptions) *Client {
+	t.Helper()
+	parsedURL, err := url.Parse(rawURL)
+	require.NoError(t, err)
+	client, err := NewClient(
+		context.Background(),
+		N.SystemDialer,
+		M.ParseSocksaddr(parsedURL.Host),
+		options,
+		nil,
+	)
+	require.NoError(t, err)
+	return client
+}
+
+func TestHTTP2KeepAlivePeriodMatchesReferencePolicy(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, 45*time.Second, (&Client{}).http2ReadIdleTimeout())
 	require.Equal(t, time.Duration(0), (&Client{options: option.V2RayXHTTPOptions{
 		Xmux: &option.V2RayXHTTPXmuxConfig{HKeepAlivePeriod: -1},
 	}}).http2ReadIdleTimeout())
-	require.Equal(t, minimumH2ReadIdle, (&Client{options: option.V2RayXHTTPOptions{
+	require.Equal(t, time.Second, (&Client{options: option.V2RayXHTTPOptions{
 		Xmux: &option.V2RayXHTTPXmuxConfig{HKeepAlivePeriod: 1},
 	}}).http2ReadIdleTimeout())
-	require.Equal(t, maximumH2ReadIdle, (&Client{options: option.V2RayXHTTPOptions{
-		Xmux: &option.V2RayXHTTPXmuxConfig{HKeepAlivePeriod: 1 << 62},
-	}}).http2ReadIdleTimeout())
+}
+
+func TestClientWithoutXmuxUsesReferenceDefaultPool(t *testing.T) {
+	t.Parallel()
+
+	client := newPlainTestClient(t, "http://127.0.0.1:1", option.V2RayXHTTPOptions{})
+	leasing := make([]*httpClientLease, 0, 4)
+	for range 4 {
+		lease, err := client.getHTTPClient(context.Background())
+		require.NoError(t, err)
+		require.False(t, lease.owned)
+		leasing = append(leasing, lease)
+	}
+	client.xmuxAccess.Lock()
+	require.NotNil(t, client.xmuxManager)
+	require.Len(t, client.xmuxManager.clients, 3)
+	client.xmuxAccess.Unlock()
+	for index := range leasing {
+		leasing[index].Close()
+	}
+	require.NoError(t, client.Close())
+}
+
+func TestClientRejectsConflictingXmuxLimits(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewClient(
+		context.Background(),
+		N.SystemDialer,
+		M.ParseSocksaddr("127.0.0.1:443"),
+		option.V2RayXHTTPOptions{Xmux: &option.V2RayXHTTPXmuxConfig{
+			MaxConcurrency: &option.V2RayXHTTPRangeConfig{From: 1, To: 1},
+			MaxConnections: &option.V2RayXHTTPRangeConfig{From: 2, To: 2},
+		}},
+		nil,
+	)
+	require.ErrorContains(t, err, "max_connections cannot be used with max_concurrency")
 }
 
 func TestXmuxCloseUnblocksWaiter(t *testing.T) {
@@ -337,7 +508,6 @@ func TestClientResetReplacesXmuxPool(t *testing.T) {
 			Path: "/xhttp",
 			Mode: "packet-up",
 			Xmux: &option.V2RayXHTTPXmuxConfig{
-				MaxConcurrency: &option.V2RayXHTTPRangeConfig{From: 1, To: 1},
 				MaxConnections: &option.V2RayXHTTPRangeConfig{From: 1, To: 1},
 			},
 		},
