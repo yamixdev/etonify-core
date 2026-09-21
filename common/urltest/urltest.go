@@ -11,6 +11,7 @@ import (
 
 	"github.com/sagernet/sing-anytls"
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/probe"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-mux"
 	"github.com/sagernet/sing-snell"
@@ -218,6 +219,23 @@ func (s *HistoryStorage) Close() error {
 }
 
 func URLTest(ctx context.Context, link string, detour N.Dialer) (uint16, error) {
+	probeSession := probe.NewURLTestSession()
+	ctx = probe.WithURLTest(ctx, probeSession)
+	for {
+		delay, err := urlTestAttempt(ctx, link, detour)
+		if err == nil {
+			probeSession.Success()
+			return delay, nil
+		}
+		if probeSession.Next(err) {
+			continue
+		}
+		probeSession.Failure(err)
+		return 0, err
+	}
+}
+
+func urlTestAttempt(ctx context.Context, link string, detour N.Dialer) (uint16, error) {
 	multiplexOutbound, isMultiplexOutbound := common.Cast[adapter.OutboundWithMultiplex](detour)
 	if isMultiplexOutbound && multiplexOutbound.MultiplexEnabled() {
 		warmContext := adapter.ContextWithKeepSession(ctx)

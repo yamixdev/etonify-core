@@ -1,0 +1,18 @@
+{
+  "revision": "dcdfc57ccdad496e192344788a7d14a8d4c88573",
+  "auto_modes": [
+    {"name": "tls-http2", "reality": false, "resolved": "packet-up"},
+    {"name": "reality-http2", "reality": true, "resolved": "stream-one"}
+  ],
+  "xmux_defaults": {
+    "max_connections": 3,
+    "min_requests": 600,
+    "max_requests": 900,
+    "min_reusable_seconds": 1800,
+    "max_reusable_seconds": 3000
+  },
+  "http2_defaults": {
+    "read_idle_seconds": 45,
+    "idle_connection_seconds": 300
+  }
+}

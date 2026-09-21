@@ -1,6 +1,7 @@
 package v2rayxhttp
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"io"
@@ -13,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sagernet/sing-box/common/probe"
+	U "github.com/sagernet/sing-box/common/urltest"
 	"github.com/sagernet/sing-box/option"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -103,6 +106,308 @@ func TestAutoModeSelection(t *testing.T) {
 	require.Equal(t, "packet-up", resolveMode("auto", false))
 	require.Equal(t, "stream-one", resolveMode("auto", true))
 	require.Equal(t, "packet-up", resolveMode("packet-up", true))
+	require.Equal(t, []string{"packet-up"}, resolveModeCandidates(false, false))
+	require.Equal(t, []string{"packet-up", "stream-one", "stream-up"}, resolveModeCandidates(true, false))
+	require.Equal(t, []string{"stream-one", "packet-up", "stream-up"}, resolveModeCandidates(true, true))
+}
+
+func TestURLTestAutoModeFallsBackAndCachesSuccessfulCandidate(t *testing.T) {
+	t.Parallel()
+
+	var packetRequests atomic.Int32
+	var streamRequests atomic.Int32
+	streamStarted := make(chan struct{}, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.Method {
+		case http.MethodGet:
+			packetRequests.Add(1)
+			writer.WriteHeader(http.StatusConflict)
+		case http.MethodPost:
+			streamRequests.Add(1)
+			_ = http.NewResponseController(writer).EnableFullDuplex()
+			writer.WriteHeader(http.StatusOK)
+			writer.(http.Flusher).Flush()
+			streamStarted <- struct{}{}
+		default:
+			writer.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	defer server.Close()
+
+	client := newPlainTestClient(t, server.URL, option.V2RayXHTTPOptions{Mode: "auto"})
+	client.http2 = true
+	probeSession := probe.NewURLTestSession()
+	probeContext := probe.WithURLTest(context.Background(), probeSession)
+	conn, err := client.DialContext(probeContext)
+	require.Nil(t, conn)
+	require.Error(t, err)
+	require.True(t, probeSession.Next(err))
+
+	conn, err = client.DialContext(probeContext)
+	require.NoError(t, err)
+	<-streamStarted
+	require.NoError(t, conn.Close())
+	probeSession.Success()
+	require.Equal(t, int32(1), packetRequests.Load())
+	require.Equal(t, int32(1), streamRequests.Load())
+
+	cachedConn, err := client.DialContext(context.Background())
+	require.NoError(t, err)
+	<-streamStarted
+	require.NoError(t, cachedConn.Close())
+	require.Equal(t, int32(1), packetRequests.Load())
+	require.Equal(t, int32(2), streamRequests.Load())
+	require.NoError(t, client.Close())
+}
+
+type xhttpURLTestDialer struct {
+	client *Client
+}
+
+func (d xhttpURLTestDialer) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
+	return d.client.DialContext(ctx)
+}
+
+func (d xhttpURLTestDialer) ListenPacket(context.Context, M.Socksaddr) (net.PacketConn, error) {
+	return nil, errors.New("packet listening is not supported")
+}
+
+func TestURLTestRetriesCompleteXHTTPProbeBeforeCachingMode(t *testing.T) {
+	t.Parallel()
+
+	var packetRequests atomic.Int32
+	var streamRequests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.Method {
+		case http.MethodGet:
+			packetRequests.Add(1)
+			writer.WriteHeader(http.StatusConflict)
+		case http.MethodPost:
+			streamRequests.Add(1)
+			_ = http.NewResponseController(writer).EnableFullDuplex()
+			writer.WriteHeader(http.StatusOK)
+			writer.(http.Flusher).Flush()
+			tunneledRequest, err := http.ReadRequest(bufio.NewReader(request.Body))
+			if err != nil {
+				return
+			}
+			_ = tunneledRequest.Body.Close()
+			_, _ = writer.Write([]byte("HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n"))
+			writer.(http.Flusher).Flush()
+		default:
+			writer.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	defer server.Close()
+
+	client := newPlainTestClient(t, server.URL, option.V2RayXHTTPOptions{Mode: "auto"})
+	client.http2 = true
+	delay, err := U.URLTest(
+		context.Background(),
+		"http://example.com/generate_204",
+		xhttpURLTestDialer{client: client},
+	)
+	require.NoError(t, err)
+	require.LessOrEqual(t, delay, uint16(1000))
+	require.Equal(t, int32(1), packetRequests.Load())
+	require.Equal(t, int32(1), streamRequests.Load())
+
+	cachedConn, err := client.DialContext(context.Background())
+	require.NoError(t, err)
+	require.NoError(t, cachedConn.Close())
+	require.Equal(t, int32(1), packetRequests.Load())
+	require.NoError(t, client.Close())
+}
+
+func TestAutoModeFallbackIsLimitedToURLTest(t *testing.T) {
+	t.Parallel()
+
+	var streamRequests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method == http.MethodPost {
+			streamRequests.Add(1)
+		}
+		writer.WriteHeader(http.StatusConflict)
+	}))
+	defer server.Close()
+
+	client := newPlainTestClient(t, server.URL, option.V2RayXHTTPOptions{Mode: "auto"})
+	client.http2 = true
+	conn, err := client.DialContext(context.Background())
+	require.Nil(t, conn)
+	require.Error(t, err)
+	require.Zero(t, streamRequests.Load())
+	require.NoError(t, client.Close())
+}
+
+func TestExplicitModeNeverFallsBackDuringURLTest(t *testing.T) {
+	t.Parallel()
+
+	var streamRequests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method == http.MethodPost {
+			streamRequests.Add(1)
+		}
+		writer.WriteHeader(http.StatusConflict)
+	}))
+	defer server.Close()
+
+	client := newPlainTestClient(t, server.URL, option.V2RayXHTTPOptions{Mode: "packet-up"})
+	client.http2 = true
+	probeSession := probe.NewURLTestSession()
+	conn, err := client.DialContext(probe.WithURLTest(context.Background(), probeSession))
+	require.Nil(t, conn)
+	require.Error(t, err)
+	require.Zero(t, streamRequests.Load())
+	require.NoError(t, client.Close())
+}
+
+func TestAutoModeCacheIsInvalidatedByReset(t *testing.T) {
+	t.Parallel()
+
+	var packetRequests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method == http.MethodGet {
+			packetRequests.Add(1)
+			writer.WriteHeader(http.StatusConflict)
+			return
+		}
+		_ = http.NewResponseController(writer).EnableFullDuplex()
+		writer.WriteHeader(http.StatusOK)
+		writer.(http.Flusher).Flush()
+	}))
+	defer server.Close()
+
+	client := newPlainTestClient(t, server.URL, option.V2RayXHTTPOptions{Mode: "auto"})
+	client.http2 = true
+	probeSession := probe.NewURLTestSession()
+	probeContext := probe.WithURLTest(context.Background(), probeSession)
+	conn, err := client.DialContext(probeContext)
+	require.Nil(t, conn)
+	require.Error(t, err)
+	require.True(t, probeSession.Next(err))
+	conn, err = client.DialContext(probeContext)
+	require.NoError(t, err)
+	probeSession.Success()
+	require.NoError(t, conn.Close())
+
+	client.Reset()
+	conn, err = client.DialContext(context.Background())
+	require.Nil(t, conn)
+	require.Error(t, err)
+	require.Equal(t, int32(2), packetRequests.Load())
+	require.NoError(t, client.Close())
+}
+
+func TestConcurrentURLTestsShareAutoModeDiscovery(t *testing.T) {
+	t.Parallel()
+
+	var packetRequests atomic.Int32
+	packetStarted := make(chan struct{})
+	releasePacket := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method == http.MethodGet {
+			if packetRequests.Add(1) == 1 {
+				close(packetStarted)
+			}
+			<-releasePacket
+			writer.WriteHeader(http.StatusConflict)
+			return
+		}
+		_ = http.NewResponseController(writer).EnableFullDuplex()
+		writer.WriteHeader(http.StatusOK)
+		writer.(http.Flusher).Flush()
+	}))
+	defer server.Close()
+
+	client := newPlainTestClient(t, server.URL, option.V2RayXHTTPOptions{Mode: "auto"})
+	client.http2 = true
+	ownerSession := probe.NewURLTestSession()
+	ownerContext := probe.WithURLTest(context.Background(), ownerSession)
+	followerSession := probe.NewURLTestSession()
+	followerContext, cancelFollower := context.WithTimeout(
+		probe.WithURLTest(context.Background(), followerSession),
+		5*time.Second,
+	)
+	defer cancelFollower()
+
+	type dialResult struct {
+		conn net.Conn
+		err  error
+	}
+	ownerResult := make(chan dialResult, 1)
+	go func() {
+		conn, err := client.DialContext(ownerContext)
+		ownerResult <- dialResult{conn: conn, err: err}
+	}()
+	<-packetStarted
+	followerResult := make(chan dialResult, 1)
+	go func() {
+		conn, err := client.DialContext(followerContext)
+		followerResult <- dialResult{conn: conn, err: err}
+	}()
+	require.Eventually(t, func() bool {
+		return packetRequests.Load() == 1
+	}, time.Second, 10*time.Millisecond)
+	close(releasePacket)
+
+	first := <-ownerResult
+	require.Nil(t, first.conn)
+	require.Error(t, first.err)
+	require.True(t, ownerSession.Next(first.err))
+	ownerConn, err := client.DialContext(ownerContext)
+	require.NoError(t, err)
+	ownerSession.Success()
+	require.NoError(t, ownerConn.Close())
+
+	follower := <-followerResult
+	require.NoError(t, follower.err)
+	require.NotNil(t, follower.conn)
+	require.NoError(t, follower.conn.Close())
+	require.Equal(t, int32(1), packetRequests.Load())
+	require.NoError(t, client.Close())
+}
+
+func TestModeCompatibilityErrorClassification(t *testing.T) {
+	t.Parallel()
+
+	for _, testCase := range []struct {
+		name       string
+		err        error
+		compatible bool
+	}{
+		{name: "bad request", err: &xhttpTransportError{statusCode: http.StatusBadRequest}, compatible: true},
+		{name: "not found", err: &xhttpTransportError{statusCode: http.StatusNotFound}, compatible: false},
+		{name: "conflict", err: &xhttpTransportError{statusCode: http.StatusConflict}, compatible: true},
+		{name: "misdirected", err: &xhttpTransportError{statusCode: http.StatusMisdirectedRequest}, compatible: true},
+		{name: "server error", err: &xhttpTransportError{statusCode: http.StatusBadGateway}, compatible: false},
+		{name: "xhttp early eof", err: &xhttpTransportError{phase: "response_stream", cause: io.ErrUnexpectedEOF}, compatible: true},
+		{name: "bare early eof", err: io.ErrUnexpectedEOF, compatible: false},
+		{name: "xhttp response body closed", err: &xhttpTransportError{phase: "response_stream", cause: errors.New("http2: response body closed")}, compatible: true},
+		{name: "bare response body closed", err: errors.New("http2: response body closed"), compatible: false},
+		{name: "timeout", err: context.DeadlineExceeded, compatible: false},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			require.Equal(t, testCase.compatible, isModeCompatibilityError(testCase.err))
+		})
+	}
+}
+
+func TestXHTTPTransportErrorRedactsRequestURL(t *testing.T) {
+	t.Parallel()
+
+	err := &xhttpTransportError{
+		phase:  "response_stream",
+		reason: "request_failed",
+		cause: &url.Error{
+			Op:  "Get",
+			URL: "https://example.com/private/path?token=secret",
+			Err: io.ErrUnexpectedEOF,
+		},
+	}
+	require.NotContains(t, err.Error(), "private")
+	require.NotContains(t, err.Error(), "secret")
+	require.ErrorIs(t, err, io.ErrUnexpectedEOF)
 }
 
 func TestDialContextWaitsForDownloadResponse(t *testing.T) {

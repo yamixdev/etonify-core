@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/probe"
 	"github.com/sagernet/sing-box/common/urltest"
 	M "github.com/sagernet/sing/common/metadata"
 	"github.com/stretchr/testify/require"
@@ -108,7 +109,18 @@ func TestClassifyURLTestError(t *testing.T) {
 	require.Equal(t, "timeout", code)
 	code, _ = classifyURLTestError(errors.New("remote error: tls: bad certificate"))
 	require.Equal(t, "tls", code)
+	code, message := classifyURLTestError(classifiedURLTestError{})
+	require.Equal(t, "xhttp_response_closed", code)
+	require.Equal(t, "XHTTP response stream failed", message)
 }
+
+type classifiedURLTestError struct{}
+
+func (classifiedURLTestError) Error() string               { return "raw private transport detail" }
+func (classifiedURLTestError) URLTestErrorCode() string    { return "xhttp_response_closed" }
+func (classifiedURLTestError) URLTestErrorMessage() string { return "XHTTP response stream failed" }
+
+var _ probe.ClassifiedError = classifiedURLTestError{}
 
 func TestPrioritizeURLTestTargetsMakesProgressAcrossLargeProfiles(t *testing.T) {
 	history := urltest.NewHistoryStorage()
@@ -147,9 +159,9 @@ type selectionTestGroup struct {
 	refresh  func()
 }
 
-func (g selectionTestGroup) Tag() string              { return g.tag }
-func (g selectionTestGroup) Now() string              { return "" }
-func (g selectionTestGroup) All() []string            { return g.children }
+func (g selectionTestGroup) Tag() string   { return g.tag }
+func (g selectionTestGroup) Now() string   { return "" }
+func (g selectionTestGroup) All() []string { return g.children }
 func (g selectionTestGroup) RefreshURLTestSelection() {
 	if g.refresh != nil {
 		g.refresh()

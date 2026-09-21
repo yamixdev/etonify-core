@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/probe"
 	"github.com/sagernet/sing-box/common/urltest"
 	E "github.com/sagernet/sing/common/exceptions"
 
@@ -724,6 +725,9 @@ func (s *StartedService) cancelURLTest(request *URLTestCancelRequest) (*emptypb.
 func classifyURLTestError(err error) (string, string) {
 	if err == nil {
 		return "", ""
+	}
+	if code, message, loaded := probe.ClassifyError(err); loaded {
+		return code, message
 	}
 	for {
 		urlError, isURLError := err.(*neturl.Error)

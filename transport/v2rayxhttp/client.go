@@ -11,10 +11,12 @@ import (
 	"net/http/httptrace"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/probe"
 	"github.com/sagernet/sing-box/common/tls"
 	"github.com/sagernet/sing-box/option"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -54,12 +56,85 @@ type Client struct {
 	closed           bool
 	generation       uint64
 	sessions         map[*splitConn]struct{}
+	resolvedMode     string
+	resolvedModeGen  uint64
+	modeProbe        *modeProbeState
 	closeOnce        sync.Once
 	closeDone        chan struct{}
 	closeErr         error
 
 	xmuxAccess  sync.Mutex
 	xmuxManager *xmuxManager
+}
+
+type modeProbeState struct {
+	generation uint64
+	done       chan struct{}
+	once       sync.Once
+	mode       string
+	err        error
+}
+
+type modeTrial struct {
+	access     sync.Mutex
+	client     *Client
+	state      *modeProbeState
+	candidates []string
+	index      int
+	complete   bool
+}
+
+func (s *modeProbeState) complete(mode string, err error) {
+	s.once.Do(func() {
+		s.mode = mode
+		s.err = err
+		close(s.done)
+	})
+}
+
+func (t *modeTrial) current() (string, bool) {
+	t.access.Lock()
+	defer t.access.Unlock()
+	if t.complete || t.index >= len(t.candidates) {
+		return "", false
+	}
+	t.client.stateAccess.Lock()
+	valid := !t.client.closed && t.state.generation == t.client.generation
+	t.client.stateAccess.Unlock()
+	return t.candidates[t.index], valid
+}
+
+func (t *modeTrial) Next(err error) bool {
+	t.access.Lock()
+	defer t.access.Unlock()
+	if t.complete || !isModeCompatibilityError(err) || t.index+1 >= len(t.candidates) {
+		return false
+	}
+	t.index++
+	return true
+}
+
+func (t *modeTrial) Success() {
+	t.access.Lock()
+	if t.complete || t.index >= len(t.candidates) {
+		t.access.Unlock()
+		return
+	}
+	t.complete = true
+	mode := t.candidates[t.index]
+	t.access.Unlock()
+	t.client.finishModeProbe(t.state, mode, nil)
+}
+
+func (t *modeTrial) Failure(err error) {
+	t.access.Lock()
+	if t.complete {
+		t.access.Unlock()
+		return
+	}
+	t.complete = true
+	t.access.Unlock()
+	t.client.finishModeProbe(t.state, "", err)
 }
 
 func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, options option.V2RayXHTTPOptions, tlsConfig tls.Config) (*Client, error) {
@@ -179,6 +254,63 @@ func (c *Client) getHTTPClient(ctx context.Context) (*httpClientLease, error) {
 }
 
 func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
+	requestedMode := c.config.mode
+	if requestedMode != "" && requestedMode != "auto" {
+		return c.dialModeContext(ctx, requestedMode)
+	}
+	if cachedMode := c.loadResolvedMode(); cachedMode != "" {
+		return c.dialModeContext(ctx, cachedMode)
+	}
+	candidates := resolveModeCandidates(c.http2, c.reality)
+	probeSession := probe.URLTestSessionFromContext(ctx)
+	if probeSession == nil || len(candidates) == 1 {
+		return c.dialModeContext(ctx, candidates[0])
+	}
+	if controller := probeSession.Controller(); controller != nil {
+		trial, isModeTrial := controller.(*modeTrial)
+		if !isModeTrial || trial.client != c {
+			return c.dialModeContext(ctx, candidates[0])
+		}
+		candidate, valid := trial.current()
+		if !valid {
+			return nil, net.ErrClosed
+		}
+		return c.dialModeContext(ctx, candidate)
+	}
+
+	probeState, owner, cachedMode, err := c.beginModeProbe()
+	if err != nil {
+		return nil, err
+	}
+	if cachedMode != "" {
+		return c.dialModeContext(ctx, cachedMode)
+	}
+	if !owner {
+		select {
+		case <-probeState.done:
+			if probeState.mode == "" {
+				return nil, probeState.err
+			}
+			return c.dialModeContext(ctx, probeState.mode)
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+
+	trial := &modeTrial{
+		client:     c,
+		state:      probeState,
+		candidates: candidates,
+	}
+	if !probeSession.BindController(trial) {
+		err = E.New("xhttp: URLTest compatibility controller already bound")
+		c.finishModeProbe(probeState, "", err)
+		return nil, err
+	}
+	return c.dialModeContext(ctx, candidates[0])
+}
+
+func (c *Client) dialModeContext(ctx context.Context, mode string) (net.Conn, error) {
 	if c.lifecycleContext.Err() != nil {
 		return nil, net.ErrClosed
 	}
@@ -202,10 +334,6 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 		return nil, err
 	}
 
-	mode := c.config.mode
-	if mode == "" || mode == "auto" {
-		mode = resolveMode(mode, c.reality)
-	}
 	var sessionID string
 	if mode != "stream-one" {
 		sessionID, err = c.config.generateSessionID()
@@ -252,6 +380,48 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 		return nil, err
 	}
 	return conn, nil
+}
+
+func (c *Client) loadResolvedMode() string {
+	c.stateAccess.Lock()
+	defer c.stateAccess.Unlock()
+	if c.closed || c.resolvedModeGen != c.generation {
+		return ""
+	}
+	return c.resolvedMode
+}
+
+func (c *Client) beginModeProbe() (*modeProbeState, bool, string, error) {
+	c.stateAccess.Lock()
+	defer c.stateAccess.Unlock()
+	if c.closed {
+		return nil, false, "", net.ErrClosed
+	}
+	if c.resolvedMode != "" && c.resolvedModeGen == c.generation {
+		return nil, false, c.resolvedMode, nil
+	}
+	if c.modeProbe != nil && c.modeProbe.generation == c.generation {
+		return c.modeProbe, false, "", nil
+	}
+	state := &modeProbeState{
+		generation: c.generation,
+		done:       make(chan struct{}),
+	}
+	c.modeProbe = state
+	return state, true, "", nil
+}
+
+func (c *Client) finishModeProbe(state *modeProbeState, mode string, err error) {
+	c.stateAccess.Lock()
+	if !c.closed && state.generation == c.generation && mode != "" {
+		c.resolvedMode = mode
+		c.resolvedModeGen = c.generation
+	}
+	if c.modeProbe == state {
+		c.modeProbe = nil
+	}
+	c.stateAccess.Unlock()
+	state.complete(mode, err)
 }
 
 func (c *Client) beginDial() (uint64, bool) {
@@ -312,9 +482,10 @@ func (c *Client) dialStreamOne(ctx context.Context, establishmentContext context
 	go func() {
 		response, doErr := lease.client.Do(request)
 		if doErr != nil {
-			_ = upload.CloseWithError(doErr)
-			download.Fail(doErr)
-			result <- doErr
+			transportErr := newXHTTPTransportError("http_connection", "request_failed", doErr)
+			_ = upload.CloseWithError(transportErr)
+			download.Fail(transportErr)
+			result <- transportErr
 			return
 		}
 		if response.StatusCode != http.StatusOK {
@@ -358,8 +529,9 @@ func (c *Client) dialStreamUp(ctx context.Context, lease *httpClientLease, downl
 	go func() {
 		response, doErr := lease.client.Do(uploadRequest)
 		if doErr != nil {
-			_ = upload.CloseWithError(doErr)
-			download.Fail(doErr)
+			transportErr := newXHTTPTransportError("upload_stream", "request_failed", doErr)
+			_ = upload.CloseWithError(transportErr)
+			download.Fail(transportErr)
 			return
 		}
 		if response.StatusCode != http.StatusOK {
@@ -418,8 +590,9 @@ func (c *Client) dialPacketUp(ctx context.Context, lease *httpClientLease, downl
 func (c *Client) runDownloadRequest(client *http.Client, request *http.Request, operation string, download *waitReadCloser, upload *io.PipeReader) {
 	response, err := client.Do(request)
 	if err != nil {
-		_ = upload.CloseWithError(err)
-		download.Fail(err)
+		transportErr := newXHTTPTransportError("response_stream", "request_failed", err)
+		_ = upload.CloseWithError(transportErr)
+		download.Fail(transportErr)
 		return
 	}
 	if response.StatusCode != http.StatusOK {
@@ -452,7 +625,7 @@ func (c *Client) sendPacketUpload(ctx context.Context, lease *httpClientLease, s
 	lease.consumeRequest()
 	response, err := lease.client.Do(request)
 	if err != nil {
-		return err
+		return newXHTTPTransportError("upload_stream", "request_failed", err)
 	}
 	if response.StatusCode != http.StatusOK {
 		return unexpectedStatus("packet-up", response)
@@ -481,6 +654,10 @@ func (c *Client) Reset() {
 		return
 	}
 	c.generation++
+	c.resolvedMode = ""
+	c.resolvedModeGen = 0
+	modeProbe := c.modeProbe
+	c.modeProbe = nil
 	sessions := make([]*splitConn, 0, len(c.sessions))
 	for session := range c.sessions {
 		sessions = append(sessions, session)
@@ -490,6 +667,9 @@ func (c *Client) Reset() {
 	c.xmuxManager = nil
 	c.xmuxAccess.Unlock()
 	c.stateAccess.Unlock()
+	if modeProbe != nil {
+		modeProbe.complete("", net.ErrClosed)
+	}
 
 	for _, session := range sessions {
 		_ = session.Close()
@@ -502,11 +682,16 @@ func (c *Client) Reset() {
 func (c *Client) close() error {
 	c.stateAccess.Lock()
 	c.closed = true
+	modeProbe := c.modeProbe
+	c.modeProbe = nil
 	sessions := make([]*splitConn, 0, len(c.sessions))
 	for session := range c.sessions {
 		sessions = append(sessions, session)
 	}
 	c.stateAccess.Unlock()
+	if modeProbe != nil {
+		modeProbe.complete("", net.ErrClosed)
+	}
 
 	c.lifecycleCancel()
 	var closeErr error
@@ -526,16 +711,118 @@ func resolveMode(mode string, realityEnabled bool) string {
 	if mode != "" && mode != "auto" {
 		return mode
 	}
-	if realityEnabled {
-		return "stream-one"
+	return resolveModeCandidates(true, realityEnabled)[0]
+}
+
+func resolveModeCandidates(http2Enabled bool, realityEnabled bool) []string {
+	if !http2Enabled {
+		return []string{"packet-up"}
 	}
-	return "packet-up"
+	if realityEnabled {
+		return []string{"stream-one", "packet-up", "stream-up"}
+	}
+	return []string{"packet-up", "stream-one", "stream-up"}
+}
+
+type xhttpTransportError struct {
+	phase      string
+	reason     string
+	operation  string
+	statusCode int
+	cause      error
+}
+
+func newXHTTPTransportError(phase string, reason string, cause error) error {
+	var existing *xhttpTransportError
+	if errors.As(cause, &existing) {
+		return existing
+	}
+	return &xhttpTransportError{
+		phase:  phase,
+		reason: reason,
+		cause:  cause,
+	}
+}
+
+func (e *xhttpTransportError) Error() string {
+	if e.statusCode != 0 {
+		return "xhttp: unexpected " + e.operation + " status: " +
+			strconv.Itoa(e.statusCode) + " " + http.StatusText(e.statusCode)
+	}
+	if e.cause != nil {
+		return "xhttp: " + e.phase + ": " + redactedTransportCause(e.cause)
+	}
+	return "xhttp: " + e.reason
+}
+
+func redactedTransportCause(err error) string {
+	for {
+		var urlError *url.Error
+		if !errors.As(err, &urlError) || urlError.Err == nil {
+			return err.Error()
+		}
+		err = urlError.Err
+	}
+}
+
+func (e *xhttpTransportError) Unwrap() error {
+	return e.cause
+}
+
+func (e *xhttpTransportError) URLTestErrorCode() string {
+	if e.statusCode != 0 {
+		return "xhttp_http_status"
+	}
+	if errors.Is(e.cause, io.ErrUnexpectedEOF) {
+		return "xhttp_early_eof"
+	}
+	if e.cause != nil && strings.Contains(strings.ToLower(redactedTransportCause(e.cause)), "http2: response body closed") {
+		return "xhttp_response_closed"
+	}
+	if e.phase != "" {
+		return "xhttp_" + e.phase
+	}
+	return "xhttp_transport"
+}
+
+func (e *xhttpTransportError) URLTestErrorMessage() string {
+	if e.statusCode != 0 {
+		return "XHTTP " + e.operation + " rejected with HTTP " + strconv.Itoa(e.statusCode)
+	}
+	if e.phase != "" {
+		return "XHTTP " + strings.ReplaceAll(e.phase, "_", " ") + " failed"
+	}
+	return "XHTTP transport failed"
 }
 
 func unexpectedStatus(operation string, response *http.Response) error {
-	status := response.Status
+	statusCode := response.StatusCode
 	_ = response.Body.Close()
-	return E.New("xhttp: unexpected ", operation, " status: ", status)
+	return &xhttpTransportError{
+		phase:      "http_status",
+		reason:     "unexpected_http_status",
+		operation:  operation,
+		statusCode: statusCode,
+	}
+}
+
+func isModeCompatibilityError(err error) bool {
+	var transportErr *xhttpTransportError
+	if !errors.As(err, &transportErr) {
+		return false
+	}
+	switch transportErr.statusCode {
+	case http.StatusBadRequest, http.StatusConflict, http.StatusMisdirectedRequest:
+		return true
+	}
+	if transportErr.cause == nil {
+		return false
+	}
+	if errors.Is(transportErr.cause, io.ErrUnexpectedEOF) {
+		return true
+	}
+	message := strings.ToLower(redactedTransportCause(transportErr.cause))
+	return strings.Contains(message, "http2: response body closed")
 }
 
 func drainAndClose(body io.ReadCloser) {
