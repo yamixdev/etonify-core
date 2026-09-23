@@ -156,6 +156,13 @@ func (s *URLTest) InterfaceUpdated(ctx context.Context) {
 	if group.pause.IsDevicePaused() || group.pause.IsNetworkPaused() {
 		return
 	}
+	if group.history.ExternallyManaged() {
+		// The client owns the network-handover probe policy. Re-evaluate the
+		// selected route using retained fallback history, but do not start an
+		// overlapping full sweep of every group member.
+		group.performUpdateCheck()
+		return
+	}
 	go func() {
 		s.checkAccess.Lock()
 		defer s.checkAccess.Unlock()

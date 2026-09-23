@@ -3,19 +3,24 @@ package group
 import (
 	"context"
 	"net"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/interrupt"
 	U "github.com/sagernet/sing-box/common/urltest"
+	"github.com/sagernet/sing-box/log"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
+	"github.com/sagernet/sing/service"
+	"github.com/sagernet/sing/service/pause"
 	"github.com/stretchr/testify/require"
 )
 
 type urlTestSelectionOutbound struct {
-	tag string
+	tag          string
+	dialAttempts *atomic.Int32
 }
 
 func (o *urlTestSelectionOutbound) Type() string           { return "test" }
@@ -23,6 +28,9 @@ func (o *urlTestSelectionOutbound) Tag() string            { return o.tag }
 func (o *urlTestSelectionOutbound) Network() []string      { return []string{N.NetworkTCP, N.NetworkUDP} }
 func (o *urlTestSelectionOutbound) Dependencies() []string { return nil }
 func (o *urlTestSelectionOutbound) DialContext(context.Context, string, M.Socksaddr) (net.Conn, error) {
+	if o.dialAttempts != nil {
+		o.dialAttempts.Add(1)
+	}
 	return nil, net.ErrClosed
 }
 func (o *urlTestSelectionOutbound) ListenPacket(context.Context, M.Socksaddr) (net.PacketConn, error) {
@@ -151,4 +159,39 @@ func TestExternallyManagedURLTestGroupDoesNotStartOwnScheduler(t *testing.T) {
 
 	require.True(t, group.started)
 	require.Nil(t, group.ticker)
+}
+
+func TestExternallyManagedURLTestDoesNotProbeAllOutboundsOnInterfaceChange(t *testing.T) {
+	ctx := pause.WithDefaultManager(context.Background())
+	history := U.NewHistoryStorage()
+	history.SetExternallyManaged(true)
+	var dialAttempts atomic.Int32
+	probe := &urlTestSelectionOutbound{tag: "probe", dialAttempts: &dialAttempts}
+	group := &URLTestGroup{
+		ctx:            ctx,
+		outbounds:      []adapter.Outbound{probe},
+		history:        history,
+		pause:          service.FromContext[pause.Manager](ctx),
+		logger:         log.NewNOPFactory().Logger(),
+		interruptGroup: interrupt.NewGroup(),
+	}
+	(&URLTest{group: group}).InterfaceUpdated(ctx)
+	require.Never(t, func() bool { return dialAttempts.Load() > 0 }, 200*time.Millisecond, 10*time.Millisecond)
+}
+
+func TestUnmanagedURLTestStillProbesOnInterfaceChange(t *testing.T) {
+	ctx := pause.WithDefaultManager(context.Background())
+	history := U.NewHistoryStorage()
+	var dialAttempts atomic.Int32
+	probe := &urlTestSelectionOutbound{tag: "probe", dialAttempts: &dialAttempts}
+	group := &URLTestGroup{
+		ctx:            ctx,
+		outbounds:      []adapter.Outbound{probe},
+		history:        history,
+		pause:          service.FromContext[pause.Manager](ctx),
+		logger:         log.NewNOPFactory().Logger(),
+		interruptGroup: interrupt.NewGroup(),
+	}
+	(&URLTest{group: group}).InterfaceUpdated(ctx)
+	require.Eventually(t, func() bool { return dialAttempts.Load() > 0 }, time.Second, 10*time.Millisecond)
 }
