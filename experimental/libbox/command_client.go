@@ -20,6 +20,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -648,6 +649,22 @@ func (c *CommandClient) URLTestWithMode(groupTag string, targetOutboundTag strin
 			Force:               force,
 			Mode:                mode,
 		})
+	})
+	if err != nil {
+		return E.Cause(err, "url test")
+	}
+	return nil
+}
+
+// URLTestWithRequestJSON is the versioned mobile bridge for selective resume.
+// The legacy positional method remains available to older clients.
+func (c *CommandClient) URLTestWithRequestJSON(requestJSON string) error {
+	request := new(daemon.URLTestRequest)
+	if err := protojson.Unmarshal([]byte(requestJSON), request); err != nil {
+		return E.Cause(err, "decode URL test request")
+	}
+	_, err := callWithResult(c, func(ctx context.Context, client daemon.StartedServiceClient) (*emptypb.Empty, error) {
+		return client.URLTest(ctx, request)
 	})
 	if err != nil {
 		return E.Cause(err, "url test")

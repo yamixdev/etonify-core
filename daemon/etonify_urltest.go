@@ -38,24 +38,26 @@ const (
 )
 
 type urlTestSession struct {
-	access            sync.Mutex
-	id                uint64
-	instance          *Instance
-	cancel            context.CancelFunc
-	queue             *urlTestQueue
-	networkGeneration uint64
-	full              bool
-	ctx               context.Context
-	completed         bool // guarded by urlTestSessionAccess
-	groupTag          string
-	targetTag         string
-	mode              string
-	total             int
-	completedCount    int
-	availableCount    int
-	unavailableCount  int
-	cancelReason      string
-	suppressedTags    map[string]struct{}
+	access               sync.Mutex
+	id                   uint64
+	instance             *Instance
+	cancel               context.CancelFunc
+	queue                *urlTestQueue
+	networkGeneration    uint64
+	logicalSessionID     string
+	physicalNetworkEpoch uint64
+	full                 bool
+	ctx                  context.Context
+	completed            bool // guarded by urlTestSessionAccess
+	groupTag             string
+	targetTag            string
+	mode                 string
+	total                int
+	completedCount       int
+	availableCount       int
+	unavailableCount     int
+	cancelReason         string
+	suppressedTags       map[string]struct{}
 }
 
 type urlTestSessionOptions struct {
@@ -93,13 +95,7 @@ func (s *StartedService) startURLTest(request *URLTestRequest) (*emptypb.Empty, 
 		return nil, os.ErrInvalid
 	}
 	boxService := s.instance
-	targets, err := resolveURLTestTargets(
-		boxService,
-		groupTag,
-		strings.TrimSpace(request.TargetOutboundTag),
-		strings.TrimSpace(request.PriorityOutboundTag),
-		strings.TrimSpace(request.ExcludeOutboundTag),
-	)
+	targets, err := resolveURLTestTargetsForRequest(boxService, request)
 	if err != nil {
 		s.serviceAccess.RUnlock()
 		return nil, err
@@ -154,17 +150,19 @@ func (s *StartedService) startURLTest(request *URLTestRequest) (*emptypb.Empty, 
 	}
 	s.urlTestSessionSequence++
 	session := &urlTestSession{
-		id:                s.urlTestSessionSequence,
-		instance:          boxService,
-		cancel:            cancel,
-		queue:             newURLTestQueue(targets),
-		networkGeneration: boxService.urlTestHistoryStorage.Generation(),
-		full:              !isTargeted,
-		ctx:               sessionContext,
-		groupTag:          groupTag,
-		targetTag:         targetTag,
-		mode:              options.mode,
-		total:             len(targets),
+		id:                   s.urlTestSessionSequence,
+		instance:             boxService,
+		cancel:               cancel,
+		queue:                newURLTestQueue(targets),
+		networkGeneration:    boxService.urlTestHistoryStorage.Generation(),
+		logicalSessionID:     strings.TrimSpace(request.LogicalSessionId),
+		physicalNetworkEpoch: request.PhysicalNetworkEpoch,
+		full:                 !isTargeted,
+		ctx:                  sessionContext,
+		groupTag:             groupTag,
+		targetTag:            targetTag,
+		mode:                 options.mode,
+		total:                len(targets),
 	}
 	s.urlTestSessions[sessionKey] = session
 	s.urlTestSessionAccess.Unlock()
@@ -324,6 +322,44 @@ func resolveURLTestTargets(boxService *Instance, groupTag string, targetTag stri
 		return nil, E.New("outbound group has no testable members: ", groupTag)
 	}
 	return targets, nil
+}
+
+// resolveURLTestTargetsForRequest keeps the existing group and priority rules,
+// then limits a resumed run to concrete leaves still pending in the caller's
+// logical session. An empty include list intentionally means the legacy full
+// group test, so callers with no pending tags must finish locally.
+func resolveURLTestTargetsForRequest(boxService *Instance, request *URLTestRequest) ([]urlTestTarget, error) {
+	targets, err := resolveURLTestTargets(
+		boxService,
+		strings.TrimSpace(request.OutboundTag),
+		strings.TrimSpace(request.TargetOutboundTag),
+		strings.TrimSpace(request.PriorityOutboundTag),
+		strings.TrimSpace(request.ExcludeOutboundTag),
+	)
+	if err != nil || len(request.IncludeOutboundTags) == 0 {
+		return targets, err
+	}
+	wanted := make(map[string]struct{}, len(request.IncludeOutboundTags))
+	for _, rawTag := range request.IncludeOutboundTags {
+		tag := strings.TrimSpace(rawTag)
+		if tag == "" {
+			return nil, E.New("empty included outbound tag")
+		}
+		wanted[tag] = struct{}{}
+	}
+	filtered := make([]urlTestTarget, 0, len(wanted))
+	for _, target := range targets {
+		if _, ok := wanted[target.tag]; ok {
+			filtered = append(filtered, target)
+			delete(wanted, target.tag)
+		}
+	}
+	if len(wanted) != 0 {
+		for tag := range wanted {
+			return nil, E.New("included outbound is not a concrete member of group ", request.OutboundTag, ": ", tag)
+		}
+	}
+	return filtered, nil
 }
 
 func prioritizeURLTestTargets(targets []urlTestTarget, history *urltest.HistoryStorage) {
@@ -490,39 +526,50 @@ func (s *StartedService) emitURLTestResult(session *urlTestSession, tag string, 
 	s.urlTestResultSequence++
 	revision := s.urlTestResultSequence
 	s.urlTestSessionAccess.Unlock()
-	s.urlTestUpdateSubscriber.Emit(&URLTestUpdate{Result: &URLTestResult{
-		Tag:               tag,
-		MeasuredAtMillis:  history.Time.UnixMilli(),
-		Delay:             int32(history.Delay),
-		Status:            adapter.URLTestHistoryStatus(history),
-		Error:             history.Error,
-		ErrorCode:         history.ErrorCode,
-		Revision:          revision,
-		NetworkGeneration: session.networkGeneration,
-		SessionId:         session.id,
-	}})
+	s.urlTestUpdateSubscriber.Emit(&URLTestUpdate{Result: urlTestResultMessage(session, tag, history, revision)})
+}
+
+func urlTestResultMessage(session *urlTestSession, tag string, history *adapter.URLTestHistory, revision uint64) *URLTestResult {
+	return &URLTestResult{
+		Tag:                  tag,
+		MeasuredAtMillis:     history.Time.UnixMilli(),
+		Delay:                int32(history.Delay),
+		Status:               adapter.URLTestHistoryStatus(history),
+		Error:                history.Error,
+		ErrorCode:            history.ErrorCode,
+		Revision:             revision,
+		NetworkGeneration:    session.networkGeneration,
+		SessionId:            session.id,
+		LogicalSessionId:     session.logicalSessionID,
+		PhysicalNetworkEpoch: session.physicalNetworkEpoch,
+	}
 }
 
 func (s *StartedService) emitURLTestSession(session *urlTestSession, state string, terminalReason string) {
 	if session == nil || s.urlTestUpdateSubscriber == nil {
 		return
 	}
+	s.urlTestUpdateSubscriber.Emit(&URLTestUpdate{Session: urlTestSessionStatusMessage(session, state, terminalReason)})
+}
+
+func urlTestSessionStatusMessage(session *urlTestSession, state string, terminalReason string) *URLTestSessionStatus {
 	session.access.Lock()
-	message := &URLTestSessionStatus{
-		SessionId:         session.id,
-		OutboundTag:       session.groupTag,
-		TargetOutboundTag: session.targetTag,
-		Mode:              session.mode,
-		State:             state,
-		TerminalReason:    terminalReason,
-		Total:             int32(session.total),
-		Completed:         int32(session.completedCount),
-		Available:         int32(session.availableCount),
-		Unavailable:       int32(session.unavailableCount),
-		NetworkGeneration: session.networkGeneration,
+	defer session.access.Unlock()
+	return &URLTestSessionStatus{
+		SessionId:            session.id,
+		OutboundTag:          session.groupTag,
+		TargetOutboundTag:    session.targetTag,
+		Mode:                 session.mode,
+		State:                state,
+		TerminalReason:       terminalReason,
+		Total:                int32(session.total),
+		Completed:            int32(session.completedCount),
+		Available:            int32(session.availableCount),
+		Unavailable:          int32(session.unavailableCount),
+		NetworkGeneration:    session.networkGeneration,
+		LogicalSessionId:     session.logicalSessionID,
+		PhysicalNetworkEpoch: session.physicalNetworkEpoch,
 	}
-	session.access.Unlock()
-	s.urlTestUpdateSubscriber.Emit(&URLTestUpdate{Session: message})
 }
 
 func (s *StartedService) emitURLTestTerminalSession(session *urlTestSession) {

@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -140,6 +141,83 @@ func TestPrioritizeURLTestTargetsMakesProgressAcrossLargeProfiles(t *testing.T) 
 		targets[1].tag,
 		targets[2].tag,
 	})
+}
+
+func TestResolveURLTestTargetsForRequestOnlyIncludesPendingConcreteLeaves(t *testing.T) {
+	manager := selectionTestManager{outbounds: map[string]adapter.Outbound{
+		"a":        mockLeafOutbound{tag: "a"},
+		"b":        mockLeafOutbound{tag: "b"},
+		"c":        mockLeafOutbound{tag: "c"},
+		"provider": selectionTestGroup{tag: "provider", children: []string{"a", "b"}},
+		"select":   selectionTestGroup{tag: "select", children: []string{"provider", "c", "b"}},
+	}}
+	boxService := &Instance{outboundManager: manager, urlTestHistoryStorage: urltest.NewHistoryStorage()}
+	request := &URLTestRequest{
+		OutboundTag:          "select",
+		IncludeOutboundTags:  []string{"b", "b", "a"},
+		PriorityOutboundTag:  "b",
+		LogicalSessionId:     "manual-7",
+		PhysicalNetworkEpoch: 8,
+		Mode:                 urlTestModeManual,
+	}
+	targets, err := resolveURLTestTargetsForRequest(boxService, request)
+	require.NoError(t, err)
+	require.Equal(t, []string{"b", "a"}, []string{targets[0].tag, targets[1].tag})
+
+	request.IncludeOutboundTags = nil
+	all, err := resolveURLTestTargetsForRequest(boxService, request)
+	require.NoError(t, err)
+	require.Len(t, all, 3)
+
+	request.IncludeOutboundTags = []string{"missing"}
+	_, err = resolveURLTestTargetsForRequest(boxService, request)
+	require.ErrorContains(t, err, "missing")
+
+	request.IncludeOutboundTags = []string{"provider"}
+	_, err = resolveURLTestTargetsForRequest(boxService, request)
+	require.ErrorContains(t, err, "provider")
+}
+
+func TestResolveURLTestTargetsForRequestLargeGroupDeduplicatesLeaves(t *testing.T) {
+	const count = 5000
+	manager := selectionTestManager{outbounds: make(map[string]adapter.Outbound, count+2)}
+	tags := make([]string, 0, count+1)
+	for index := range count {
+		tag := fmt.Sprintf("leaf-%04d", index)
+		manager.outbounds[tag] = mockLeafOutbound{tag: tag}
+		tags = append(tags, tag)
+	}
+	tags = append(tags, "leaf-0000")
+	manager.outbounds["select"] = selectionTestGroup{tag: "select", children: tags}
+	boxService := &Instance{outboundManager: manager, urlTestHistoryStorage: urltest.NewHistoryStorage()}
+	targets, err := resolveURLTestTargetsForRequest(boxService, &URLTestRequest{
+		OutboundTag:         "select",
+		IncludeOutboundTags: []string{"leaf-4999", "leaf-4999", "leaf-0000"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"leaf-0000", "leaf-4999"}, []string{targets[0].tag, targets[1].tag})
+}
+
+func TestURLTestSessionMessagesPreserveLogicalIdentity(t *testing.T) {
+	session := &urlTestSession{
+		id:                   2,
+		logicalSessionID:     "manual-7",
+		physicalNetworkEpoch: 8,
+		networkGeneration:    3,
+		groupTag:             "select",
+		total:                2,
+	}
+	history := &adapter.URLTestHistory{Time: time.UnixMilli(1234), Delay: 51, Status: adapter.URLTestStatusAvailable}
+	result := urlTestResultMessage(session, "b", history, 9)
+	require.Equal(t, "manual-7", result.LogicalSessionId)
+	require.Equal(t, uint64(8), result.PhysicalNetworkEpoch)
+	require.Equal(t, uint64(3), result.NetworkGeneration)
+	require.Equal(t, int32(51), result.Delay)
+
+	status := urlTestSessionStatusMessage(session, "running", "")
+	require.Equal(t, "manual-7", status.LogicalSessionId)
+	require.Equal(t, uint64(8), status.PhysicalNetworkEpoch)
+	require.Equal(t, uint64(3), status.NetworkGeneration)
 }
 
 type selectionTestManager struct {

@@ -148,6 +148,9 @@ message URLTestRequest {
   int32 deadlineMillis = 8;
   bool force = 9;
   string mode = 10;
+  repeated string includeOutboundTags = 11;
+  string logicalSessionId = 12;
+  uint64 physicalNetworkEpoch = 13;
 }
 
 message URLTestCancelRequest {
@@ -170,6 +173,8 @@ message URLTestResult {
   uint64 revision = 7;
   uint64 networkGeneration = 8;
   uint64 sessionId = 9;
+  string logicalSessionId = 10;
+  uint64 physicalNetworkEpoch = 11;
 }
 
 message URLTestSessionStatus {
@@ -184,6 +189,8 @@ message URLTestSessionStatus {
   int32 available = 9;
   int32 unavailable = 10;
   uint64 networkGeneration = 11;
+  string logicalSessionId = 12;
+  uint64 physicalNetworkEpoch = 13;
 }
 
 message OutboundExternalInfoRequest {

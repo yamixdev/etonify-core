@@ -9,7 +9,7 @@ import (
 // API v2 makes the detailed XHTTP and VLESS Encryption limits part of the
 // mobile integration contract. Clients must not infer these limits from the
 // coarse supports_* flags.
-const etonifyAPIVersion = 3
+const etonifyAPIVersion = 4
 
 type etonifyCapabilitySet struct {
 	APIVersion                              int      `json:"api_version"`
@@ -36,6 +36,7 @@ type etonifyCapabilitySet struct {
 	SupportsURLTestNetworkGeneration        bool     `json:"supports_url_test_network_generation"`
 	SupportsURLTestExhaustive               bool     `json:"supports_url_test_exhaustive"`
 	SupportsURLTestCancel                   bool     `json:"supports_url_test_cancel"`
+	SupportsURLTestHandoff                  bool     `json:"supports_url_test_handoff"`
 	SupportsConfigCheck                     bool     `json:"supports_config_check"`
 	SupportsCloseConnections                bool     `json:"supports_close_connections"`
 	SupportsRealitySpiderX                  bool     `json:"supports_reality_spider_x"`
@@ -82,6 +83,7 @@ func EtonifyCapabilities() string {
 		SupportsURLTestNetworkGeneration:  true,
 		SupportsURLTestExhaustive:         true,
 		SupportsURLTestCancel:             true,
+		SupportsURLTestHandoff:            true,
 		SupportsConfigCheck:               true,
 		SupportsCloseConnections:          true,
 		SupportsRealitySpiderX:            true,

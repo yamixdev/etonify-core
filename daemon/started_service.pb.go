@@ -858,19 +858,22 @@ func (x *GroupItem) GetUrlTestErrorCode() string {
 }
 
 type URLTestRequest struct {
-	state               protoimpl.MessageState `protogen:"open.v1"`
-	OutboundTag         string                 `protobuf:"bytes,1,opt,name=outboundTag,proto3" json:"outboundTag,omitempty"`
-	UrlTestUrl          string                 `protobuf:"bytes,2,opt,name=urlTestUrl,proto3" json:"urlTestUrl,omitempty"`
-	TargetOutboundTag   string                 `protobuf:"bytes,3,opt,name=targetOutboundTag,proto3" json:"targetOutboundTag,omitempty"`
-	PriorityOutboundTag string                 `protobuf:"bytes,4,opt,name=priorityOutboundTag,proto3" json:"priorityOutboundTag,omitempty"`
-	ExcludeOutboundTag  string                 `protobuf:"bytes,5,opt,name=excludeOutboundTag,proto3" json:"excludeOutboundTag,omitempty"`
-	TimeoutMillis       int32                  `protobuf:"varint,6,opt,name=timeoutMillis,proto3" json:"timeoutMillis,omitempty"`
-	Concurrency         int32                  `protobuf:"varint,7,opt,name=concurrency,proto3" json:"concurrency,omitempty"`
-	DeadlineMillis      int32                  `protobuf:"varint,8,opt,name=deadlineMillis,proto3" json:"deadlineMillis,omitempty"`
-	Force               bool                   `protobuf:"varint,9,opt,name=force,proto3" json:"force,omitempty"`
-	Mode                string                 `protobuf:"bytes,10,opt,name=mode,proto3" json:"mode,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	OutboundTag          string                 `protobuf:"bytes,1,opt,name=outboundTag,proto3" json:"outboundTag,omitempty"`
+	UrlTestUrl           string                 `protobuf:"bytes,2,opt,name=urlTestUrl,proto3" json:"urlTestUrl,omitempty"`
+	TargetOutboundTag    string                 `protobuf:"bytes,3,opt,name=targetOutboundTag,proto3" json:"targetOutboundTag,omitempty"`
+	PriorityOutboundTag  string                 `protobuf:"bytes,4,opt,name=priorityOutboundTag,proto3" json:"priorityOutboundTag,omitempty"`
+	ExcludeOutboundTag   string                 `protobuf:"bytes,5,opt,name=excludeOutboundTag,proto3" json:"excludeOutboundTag,omitempty"`
+	TimeoutMillis        int32                  `protobuf:"varint,6,opt,name=timeoutMillis,proto3" json:"timeoutMillis,omitempty"`
+	Concurrency          int32                  `protobuf:"varint,7,opt,name=concurrency,proto3" json:"concurrency,omitempty"`
+	DeadlineMillis       int32                  `protobuf:"varint,8,opt,name=deadlineMillis,proto3" json:"deadlineMillis,omitempty"`
+	Force                bool                   `protobuf:"varint,9,opt,name=force,proto3" json:"force,omitempty"`
+	Mode                 string                 `protobuf:"bytes,10,opt,name=mode,proto3" json:"mode,omitempty"`
+	IncludeOutboundTags  []string               `protobuf:"bytes,11,rep,name=includeOutboundTags,proto3" json:"includeOutboundTags,omitempty"`
+	LogicalSessionId     string                 `protobuf:"bytes,12,opt,name=logicalSessionId,proto3" json:"logicalSessionId,omitempty"`
+	PhysicalNetworkEpoch uint64                 `protobuf:"varint,13,opt,name=physicalNetworkEpoch,proto3" json:"physicalNetworkEpoch,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *URLTestRequest) Reset() {
@@ -971,6 +974,27 @@ func (x *URLTestRequest) GetMode() string {
 		return x.Mode
 	}
 	return ""
+}
+
+func (x *URLTestRequest) GetIncludeOutboundTags() []string {
+	if x != nil {
+		return x.IncludeOutboundTags
+	}
+	return nil
+}
+
+func (x *URLTestRequest) GetLogicalSessionId() string {
+	if x != nil {
+		return x.LogicalSessionId
+	}
+	return ""
+}
+
+func (x *URLTestRequest) GetPhysicalNetworkEpoch() uint64 {
+	if x != nil {
+		return x.PhysicalNetworkEpoch
+	}
+	return 0
 }
 
 type URLTestCancelRequest struct {
@@ -1078,18 +1102,20 @@ func (x *URLTestUpdate) GetSession() *URLTestSessionStatus {
 }
 
 type URLTestResult struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	Tag               string                 `protobuf:"bytes,1,opt,name=tag,proto3" json:"tag,omitempty"`
-	MeasuredAtMillis  int64                  `protobuf:"varint,2,opt,name=measuredAtMillis,proto3" json:"measuredAtMillis,omitempty"`
-	Delay             int32                  `protobuf:"varint,3,opt,name=delay,proto3" json:"delay,omitempty"`
-	Status            string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
-	Error             string                 `protobuf:"bytes,5,opt,name=error,proto3" json:"error,omitempty"`
-	ErrorCode         string                 `protobuf:"bytes,6,opt,name=errorCode,proto3" json:"errorCode,omitempty"`
-	Revision          uint64                 `protobuf:"varint,7,opt,name=revision,proto3" json:"revision,omitempty"`
-	NetworkGeneration uint64                 `protobuf:"varint,8,opt,name=networkGeneration,proto3" json:"networkGeneration,omitempty"`
-	SessionId         uint64                 `protobuf:"varint,9,opt,name=sessionId,proto3" json:"sessionId,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	Tag                  string                 `protobuf:"bytes,1,opt,name=tag,proto3" json:"tag,omitempty"`
+	MeasuredAtMillis     int64                  `protobuf:"varint,2,opt,name=measuredAtMillis,proto3" json:"measuredAtMillis,omitempty"`
+	Delay                int32                  `protobuf:"varint,3,opt,name=delay,proto3" json:"delay,omitempty"`
+	Status               string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
+	Error                string                 `protobuf:"bytes,5,opt,name=error,proto3" json:"error,omitempty"`
+	ErrorCode            string                 `protobuf:"bytes,6,opt,name=errorCode,proto3" json:"errorCode,omitempty"`
+	Revision             uint64                 `protobuf:"varint,7,opt,name=revision,proto3" json:"revision,omitempty"`
+	NetworkGeneration    uint64                 `protobuf:"varint,8,opt,name=networkGeneration,proto3" json:"networkGeneration,omitempty"`
+	SessionId            uint64                 `protobuf:"varint,9,opt,name=sessionId,proto3" json:"sessionId,omitempty"`
+	LogicalSessionId     string                 `protobuf:"bytes,10,opt,name=logicalSessionId,proto3" json:"logicalSessionId,omitempty"`
+	PhysicalNetworkEpoch uint64                 `protobuf:"varint,11,opt,name=physicalNetworkEpoch,proto3" json:"physicalNetworkEpoch,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *URLTestResult) Reset() {
@@ -1185,21 +1211,37 @@ func (x *URLTestResult) GetSessionId() uint64 {
 	return 0
 }
 
+func (x *URLTestResult) GetLogicalSessionId() string {
+	if x != nil {
+		return x.LogicalSessionId
+	}
+	return ""
+}
+
+func (x *URLTestResult) GetPhysicalNetworkEpoch() uint64 {
+	if x != nil {
+		return x.PhysicalNetworkEpoch
+	}
+	return 0
+}
+
 type URLTestSessionStatus struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	SessionId         uint64                 `protobuf:"varint,1,opt,name=sessionId,proto3" json:"sessionId,omitempty"`
-	OutboundTag       string                 `protobuf:"bytes,2,opt,name=outboundTag,proto3" json:"outboundTag,omitempty"`
-	TargetOutboundTag string                 `protobuf:"bytes,3,opt,name=targetOutboundTag,proto3" json:"targetOutboundTag,omitempty"`
-	Mode              string                 `protobuf:"bytes,4,opt,name=mode,proto3" json:"mode,omitempty"`
-	State             string                 `protobuf:"bytes,5,opt,name=state,proto3" json:"state,omitempty"`
-	TerminalReason    string                 `protobuf:"bytes,6,opt,name=terminalReason,proto3" json:"terminalReason,omitempty"`
-	Total             int32                  `protobuf:"varint,7,opt,name=total,proto3" json:"total,omitempty"`
-	Completed         int32                  `protobuf:"varint,8,opt,name=completed,proto3" json:"completed,omitempty"`
-	Available         int32                  `protobuf:"varint,9,opt,name=available,proto3" json:"available,omitempty"`
-	Unavailable       int32                  `protobuf:"varint,10,opt,name=unavailable,proto3" json:"unavailable,omitempty"`
-	NetworkGeneration uint64                 `protobuf:"varint,11,opt,name=networkGeneration,proto3" json:"networkGeneration,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	SessionId            uint64                 `protobuf:"varint,1,opt,name=sessionId,proto3" json:"sessionId,omitempty"`
+	OutboundTag          string                 `protobuf:"bytes,2,opt,name=outboundTag,proto3" json:"outboundTag,omitempty"`
+	TargetOutboundTag    string                 `protobuf:"bytes,3,opt,name=targetOutboundTag,proto3" json:"targetOutboundTag,omitempty"`
+	Mode                 string                 `protobuf:"bytes,4,opt,name=mode,proto3" json:"mode,omitempty"`
+	State                string                 `protobuf:"bytes,5,opt,name=state,proto3" json:"state,omitempty"`
+	TerminalReason       string                 `protobuf:"bytes,6,opt,name=terminalReason,proto3" json:"terminalReason,omitempty"`
+	Total                int32                  `protobuf:"varint,7,opt,name=total,proto3" json:"total,omitempty"`
+	Completed            int32                  `protobuf:"varint,8,opt,name=completed,proto3" json:"completed,omitempty"`
+	Available            int32                  `protobuf:"varint,9,opt,name=available,proto3" json:"available,omitempty"`
+	Unavailable          int32                  `protobuf:"varint,10,opt,name=unavailable,proto3" json:"unavailable,omitempty"`
+	NetworkGeneration    uint64                 `protobuf:"varint,11,opt,name=networkGeneration,proto3" json:"networkGeneration,omitempty"`
+	LogicalSessionId     string                 `protobuf:"bytes,12,opt,name=logicalSessionId,proto3" json:"logicalSessionId,omitempty"`
+	PhysicalNetworkEpoch uint64                 `protobuf:"varint,13,opt,name=physicalNetworkEpoch,proto3" json:"physicalNetworkEpoch,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *URLTestSessionStatus) Reset() {
@@ -1305,6 +1347,20 @@ func (x *URLTestSessionStatus) GetUnavailable() int32 {
 func (x *URLTestSessionStatus) GetNetworkGeneration() uint64 {
 	if x != nil {
 		return x.NetworkGeneration
+	}
+	return 0
+}
+
+func (x *URLTestSessionStatus) GetLogicalSessionId() string {
+	if x != nil {
+		return x.LogicalSessionId
+	}
+	return ""
+}
+
+func (x *URLTestSessionStatus) GetPhysicalNetworkEpoch() uint64 {
+	if x != nil {
+		return x.PhysicalNetworkEpoch
 	}
 	return 0
 }
@@ -8178,7 +8234,7 @@ const file_daemon_started_service_proto_rawDesc = "" +
 	"\furlTestDelay\x18\x04 \x01(\x05R\furlTestDelay\x12$\n" +
 	"\rurlTestStatus\x18\x05 \x01(\tR\rurlTestStatus\x12\"\n" +
 	"\furlTestError\x18\x06 \x01(\tR\furlTestError\x12*\n" +
-	"\x10urlTestErrorCode\x18\a \x01(\tR\x10urlTestErrorCode\"\xfc\x02\n" +
+	"\x10urlTestErrorCode\x18\a \x01(\tR\x10urlTestErrorCode\"\x8e\x04\n" +
 	"\x0eURLTestRequest\x12 \n" +
 	"\voutboundTag\x18\x01 \x01(\tR\voutboundTag\x12\x1e\n" +
 	"\n" +
@@ -8192,13 +8248,16 @@ const file_daemon_started_service_proto_rawDesc = "" +
 	"\x0edeadlineMillis\x18\b \x01(\x05R\x0edeadlineMillis\x12\x14\n" +
 	"\x05force\x18\t \x01(\bR\x05force\x12\x12\n" +
 	"\x04mode\x18\n" +
-	" \x01(\tR\x04mode\"f\n" +
+	" \x01(\tR\x04mode\x120\n" +
+	"\x13includeOutboundTags\x18\v \x03(\tR\x13includeOutboundTags\x12*\n" +
+	"\x10logicalSessionId\x18\f \x01(\tR\x10logicalSessionId\x122\n" +
+	"\x14physicalNetworkEpoch\x18\r \x01(\x04R\x14physicalNetworkEpoch\"f\n" +
 	"\x14URLTestCancelRequest\x12 \n" +
 	"\voutboundTag\x18\x01 \x01(\tR\voutboundTag\x12,\n" +
 	"\x11targetOutboundTag\x18\x02 \x01(\tR\x11targetOutboundTag\"v\n" +
 	"\rURLTestUpdate\x12-\n" +
 	"\x06result\x18\x01 \x01(\v2\x15.daemon.URLTestResultR\x06result\x126\n" +
-	"\asession\x18\x02 \x01(\v2\x1c.daemon.URLTestSessionStatusR\asession\"\x97\x02\n" +
+	"\asession\x18\x02 \x01(\v2\x1c.daemon.URLTestSessionStatusR\asession\"\xf7\x02\n" +
 	"\rURLTestResult\x12\x10\n" +
 	"\x03tag\x18\x01 \x01(\tR\x03tag\x12*\n" +
 	"\x10measuredAtMillis\x18\x02 \x01(\x03R\x10measuredAtMillis\x12\x14\n" +
@@ -8208,7 +8267,10 @@ const file_daemon_started_service_proto_rawDesc = "" +
 	"\terrorCode\x18\x06 \x01(\tR\terrorCode\x12\x1a\n" +
 	"\brevision\x18\a \x01(\x04R\brevision\x12,\n" +
 	"\x11networkGeneration\x18\b \x01(\x04R\x11networkGeneration\x12\x1c\n" +
-	"\tsessionId\x18\t \x01(\x04R\tsessionId\"\xf8\x02\n" +
+	"\tsessionId\x18\t \x01(\x04R\tsessionId\x12*\n" +
+	"\x10logicalSessionId\x18\n" +
+	" \x01(\tR\x10logicalSessionId\x122\n" +
+	"\x14physicalNetworkEpoch\x18\v \x01(\x04R\x14physicalNetworkEpoch\"\xd8\x03\n" +
 	"\x14URLTestSessionStatus\x12\x1c\n" +
 	"\tsessionId\x18\x01 \x01(\x04R\tsessionId\x12 \n" +
 	"\voutboundTag\x18\x02 \x01(\tR\voutboundTag\x12,\n" +
@@ -8221,7 +8283,9 @@ const file_daemon_started_service_proto_rawDesc = "" +
 	"\tavailable\x18\t \x01(\x05R\tavailable\x12 \n" +
 	"\vunavailable\x18\n" +
 	" \x01(\x05R\vunavailable\x12,\n" +
-	"\x11networkGeneration\x18\v \x01(\x04R\x11networkGeneration\"?\n" +
+	"\x11networkGeneration\x18\v \x01(\x04R\x11networkGeneration\x12*\n" +
+	"\x10logicalSessionId\x18\f \x01(\tR\x10logicalSessionId\x122\n" +
+	"\x14physicalNetworkEpoch\x18\r \x01(\x04R\x14physicalNetworkEpoch\"?\n" +
 	"\x1bOutboundExternalInfoRequest\x12 \n" +
 	"\voutboundTag\x18\x01 \x01(\tR\voutboundTag\"P\n" +
 	"\x1cOutboundExternalInfoResponse\x12\x0e\n" +

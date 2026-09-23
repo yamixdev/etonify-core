@@ -37,6 +37,8 @@ func TestEtonifyCapabilities(t *testing.T) {
 	require.True(t, capabilities.SupportsURLTestNetworkGeneration)
 	require.True(t, capabilities.SupportsURLTestExhaustive)
 	require.True(t, capabilities.SupportsURLTestCancel)
+	require.True(t, capabilities.SupportsURLTestHandoff)
+	require.Equal(t, 4, capabilities.APIVersion)
 	require.True(t, capabilities.SupportsConfigCheck)
 	require.True(t, capabilities.SupportsCloseConnections)
 	require.True(t, capabilities.SupportsRealitySpiderX)
