@@ -458,15 +458,29 @@ func resolveSelectedURLTestOutbound(outboundManager adapter.OutboundManager, tag
 }
 
 func (s *StartedService) runURLTestSession(ctx context.Context, sessionKey string, groupTag string, session *urlTestSession, targets []urlTestTarget, options urlTestSessionOptions) {
+	s.runURLTestSessionWithProbe(ctx, sessionKey, groupTag, session, targets, options,
+		func(probeContext context.Context, link string, outbound adapter.Outbound) (uint16, error) {
+			return urltest.URLTest(probeContext, link, outbound)
+		})
+}
+
+func (s *StartedService) runURLTestSessionWithProbe(ctx context.Context, sessionKey string, groupTag string, session *urlTestSession, targets []urlTestTarget, options urlTestSessionOptions, runProbe urlTestProbe) {
 	defer session.cancel()
 	defer s.finishURLTestSession(sessionKey, session)
+	selectionUpdater := newURLTestSelectionUpdater(1500*time.Millisecond, func() {
+		if ctx.Err() == nil &&
+			session.networkGeneration == session.instance.urlTestHistoryStorage.Generation() &&
+			s.isCurrentURLTestSession(sessionKey, session) {
+			refreshURLTestGroupSelections(session.instance.outboundManager, groupTag)
+		}
+	})
 
 	probe := func(probeContext context.Context, link string, outbound adapter.Outbound) (uint16, error) {
 		if session.networkGeneration != session.instance.urlTestHistoryStorage.Generation() {
 			session.requestCancel("network_changed")
 			return 0, context.Canceled
 		}
-		return urltest.URLTest(probeContext, link, outbound)
+		return runProbe(probeContext, link, outbound)
 	}
 	runURLTestQueue(ctx, session.queue, len(targets), options, probe, func(target urlTestTarget, delay uint16, err error) {
 		if !s.isCurrentURLTestSession(sessionKey, session) {
@@ -496,6 +510,7 @@ func (s *StartedService) runURLTestSession(ctx context.Context, sessionKey strin
 				s.emitURLTestResult(session, target.tag, history)
 				session.recordResult(false)
 				s.emitURLTestSession(session, "running", "")
+				selectionUpdater.onResult()
 			}
 			return
 		}
@@ -511,11 +526,10 @@ func (s *StartedService) runURLTestSession(ctx context.Context, sessionKey strin
 			s.emitURLTestResult(session, target.tag, history)
 			session.recordResult(true)
 			s.emitURLTestSession(session, "running", "")
+			selectionUpdater.onResult()
 		}
 	})
-	if s.isCurrentURLTestSession(sessionKey, session) {
-		refreshURLTestGroupSelections(session.instance.outboundManager, groupTag)
-	}
+	selectionUpdater.finish()
 }
 
 func (s *StartedService) emitURLTestResult(session *urlTestSession, tag string, history *adapter.URLTestHistory) {

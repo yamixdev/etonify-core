@@ -269,6 +269,77 @@ func TestRefreshURLTestSelectionsChildrenBeforeParents(t *testing.T) {
 	require.Equal(t, []string{"provider", "lowest", "select"}, order)
 }
 
+func TestURLTestSelectionUpdaterRefreshesFirstResultAndCoalescesRest(t *testing.T) {
+	var refreshCount atomic.Int32
+	updater := newURLTestSelectionUpdater(40*time.Millisecond, func() {
+		refreshCount.Add(1)
+	})
+	updater.onResult()
+	require.Equal(t, int32(1), refreshCount.Load(), "first completed probe must update routing immediately")
+	for range 20 {
+		updater.onResult()
+	}
+	require.Equal(t, int32(1), refreshCount.Load(), "rapid results must not each rescan the group")
+	require.Eventually(t, func() bool { return refreshCount.Load() == 2 }, time.Second, 5*time.Millisecond)
+	updater.finish()
+	require.Equal(t, int32(3), refreshCount.Load(), "final selection must see the entire queue")
+}
+
+func TestURLTestSessionRefreshesSelectionBeforeQueueDrains(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	history := urltest.NewHistoryStorage()
+	firstSelection := make(chan struct{}, 1)
+	manager := selectionTestManager{outbounds: map[string]adapter.Outbound{
+		"fast": mockLeafOutbound{tag: "fast"},
+		"slow": mockLeafOutbound{tag: "slow"},
+	}}
+	manager.outbounds["select"] = selectionTestGroup{
+		tag: "select", children: []string{"fast", "slow"},
+		refresh: func() {
+			if result := history.LoadCurrentURLTestHistory("fast"); result != nil && result.Delay == 25 {
+				select {
+				case firstSelection <- struct{}{}:
+				default:
+				}
+			}
+		},
+	}
+	instance := &Instance{ctx: ctx, outboundManager: manager, urlTestHistoryStorage: history}
+	targets := []urlTestTarget{
+		{tag: "fast", outbound: manager.outbounds["fast"]},
+		{tag: "slow", outbound: manager.outbounds["slow"]},
+	}
+	session := &urlTestSession{
+		instance: instance, cancel: cancel, queue: newURLTestQueue(targets),
+		networkGeneration: history.Generation(), ctx: ctx, groupTag: "select", full: true, total: len(targets),
+	}
+	service := &StartedService{urlTestSessions: map[string]*urlTestSession{"select": session}}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		service.runURLTestSessionWithProbe(ctx, "select", "select", session, targets, urlTestSessionOptions{timeout: time.Second, concurrency: 2}, func(probeContext context.Context, _ string, outbound adapter.Outbound) (uint16, error) {
+			if outbound.Tag() == "fast" {
+				return 25, nil
+			}
+			<-probeContext.Done()
+			return 0, probeContext.Err()
+		})
+	}()
+	select {
+	case <-firstSelection:
+		// The slow probe is still blocked, so the queue has not drained.
+	case <-time.After(time.Second):
+		t.Fatal("first usable result did not update selection before queue completion")
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("canceled URLTest session did not stop")
+	}
+}
+
 type mockLeafOutbound struct {
 	adapter.Outbound
 	tag string
