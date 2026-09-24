@@ -77,29 +77,33 @@ type OutboundExternalInfo struct {
 }
 
 type URLTestResult struct {
-	Tag               string
-	MeasuredAtMillis  int64
-	Delay             int32
-	Status            string
-	Error             string
-	ErrorCode         string
-	Revision          int64
-	NetworkGeneration int64
-	SessionID         int64
+	Tag                  string
+	MeasuredAtMillis     int64
+	Delay                int32
+	Status               string
+	Error                string
+	ErrorCode            string
+	Revision             int64
+	NetworkGeneration    int64
+	SessionID            int64
+	LogicalSessionID     string
+	PhysicalNetworkEpoch int64
 }
 
 type URLTestSessionStatus struct {
-	SessionID         int64
-	OutboundTag       string
-	TargetOutboundTag string
-	Mode              string
-	State             string
-	TerminalReason    string
-	Total             int32
-	Completed         int32
-	Available         int32
-	Unavailable       int32
-	NetworkGeneration int64
+	SessionID            int64
+	OutboundTag          string
+	TargetOutboundTag    string
+	Mode                 string
+	State                string
+	TerminalReason       string
+	Total                int32
+	Completed            int32
+	Available            int32
+	Unavailable          int32
+	NetworkGeneration    int64
+	LogicalSessionID     string
+	PhysicalNetworkEpoch int64
 }
 
 type URLTestUpdate struct {
@@ -412,30 +416,34 @@ func urlTestUpdateFromGRPC(update *daemon.URLTestUpdate) *URLTestUpdate {
 	converted := &URLTestUpdate{}
 	if result := update.Result; result != nil {
 		converted.Result = &URLTestResult{
-			Tag:               result.Tag,
-			MeasuredAtMillis:  result.MeasuredAtMillis,
-			Delay:             result.Delay,
-			Status:            result.Status,
-			Error:             result.Error,
-			ErrorCode:         result.ErrorCode,
-			Revision:          int64(result.Revision),
-			NetworkGeneration: int64(result.NetworkGeneration),
-			SessionID:         int64(result.SessionId),
+			Tag:                  result.Tag,
+			MeasuredAtMillis:     result.MeasuredAtMillis,
+			Delay:                result.Delay,
+			Status:               result.Status,
+			Error:                result.Error,
+			ErrorCode:            result.ErrorCode,
+			Revision:             int64(result.Revision),
+			NetworkGeneration:    int64(result.NetworkGeneration),
+			SessionID:            int64(result.SessionId),
+			LogicalSessionID:     result.LogicalSessionId,
+			PhysicalNetworkEpoch: int64(result.PhysicalNetworkEpoch),
 		}
 	}
 	if session := update.Session; session != nil {
 		converted.Session = &URLTestSessionStatus{
-			SessionID:         int64(session.SessionId),
-			OutboundTag:       session.OutboundTag,
-			TargetOutboundTag: session.TargetOutboundTag,
-			Mode:              session.Mode,
-			State:             session.State,
-			TerminalReason:    session.TerminalReason,
-			Total:             session.Total,
-			Completed:         session.Completed,
-			Available:         session.Available,
-			Unavailable:       session.Unavailable,
-			NetworkGeneration: int64(session.NetworkGeneration),
+			SessionID:            int64(session.SessionId),
+			OutboundTag:          session.OutboundTag,
+			TargetOutboundTag:    session.TargetOutboundTag,
+			Mode:                 session.Mode,
+			State:                session.State,
+			TerminalReason:       session.TerminalReason,
+			Total:                session.Total,
+			Completed:            session.Completed,
+			Available:            session.Available,
+			Unavailable:          session.Unavailable,
+			NetworkGeneration:    int64(session.NetworkGeneration),
+			LogicalSessionID:     session.LogicalSessionId,
+			PhysicalNetworkEpoch: int64(session.PhysicalNetworkEpoch),
 		}
 	}
 	return converted
