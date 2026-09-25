@@ -2,6 +2,7 @@ package group
 
 import (
 	"context"
+	"io"
 	"net"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -121,6 +122,14 @@ func (s *Selector) All() []string {
 	return s.tags
 }
 
+func (s *Selector) Selected(network string) adapter.Outbound {
+	return s.selected.Load()
+}
+
+func (s *Selector) AttachConnection(closer io.Closer) func() {
+	return s.interruptGroup.Add(closer, true)
+}
+
 func (s *Selector) References() []string {
 	return []string{s.Now()}
 }
@@ -189,18 +198,18 @@ func (s *Selector) NewPacketConnection(ctx context.Context, conn N.PacketConn, m
 	}
 }
 
-func RealTag(outboundManager adapter.OutboundManager, detour adapter.Outbound) string {
-	tag := detour.Tag()
-	for {
+func RealTag(detour adapter.Outbound, network string) string {
+	visited := make(map[adapter.Outbound]bool)
+	for detour != nil {
+		if visited[detour] {
+			return ""
+		}
+		visited[detour] = true
 		group, isGroup := detour.(adapter.OutboundGroup)
 		if !isGroup {
-			return tag
+			return detour.Tag()
 		}
-		tag = group.Now()
-		var loaded bool
-		detour, loaded = outboundManager.Outbound(tag)
-		if !loaded {
-			return tag
-		}
+		detour = group.Selected(network)
 	}
+	return ""
 }

@@ -516,6 +516,12 @@ func (d *DefaultDialer) dialAttribution(ctx context.Context, destination M.Socks
 	}
 	attribution.Rule = metadata.RouteRule
 	attribution.Outbound = metadata.Outbound
+	if len(metadata.OutboundChain) > 0 {
+		attribution.Chain = make([]string, len(metadata.OutboundChain))
+		for i, outbound := range metadata.OutboundChain {
+			attribution.Chain[len(metadata.OutboundChain)-1-i] = outbound.Tag()
+		}
+	}
 	if d.outboundManager != nil {
 		if metadata.Outbound != "" {
 			outbound, loaded := d.outboundManager.Outbound(metadata.Outbound)
@@ -523,7 +529,7 @@ func (d *DefaultDialer) dialAttribution(ctx context.Context, destination M.Socks
 				attribution.OutboundType = outbound.Type()
 			}
 		}
-		if metadata.RouteOutbound != "" {
+		if metadata.RouteOutbound != "" && len(attribution.Chain) == 0 {
 			attribution.Chain = d.outboundChain(metadata.RouteOutbound)
 		}
 	}

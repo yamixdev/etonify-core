@@ -3,6 +3,7 @@ package interrupt
 import (
 	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -15,6 +16,30 @@ type closeBarrierConn struct {
 type reentrantCloseConn struct {
 	net.Conn
 	group *Group
+}
+
+type countingCloser struct{ closes atomic.Int32 }
+
+func (c *countingCloser) Close() error {
+	c.closes.Add(1)
+	return nil
+}
+
+func TestAttachedCloserInterruptsUnlessDetached(t *testing.T) {
+	group := NewGroup()
+	active := &countingCloser{}
+	detached := &countingCloser{}
+	group.Add(active, true)
+	remove := group.Add(detached, true)
+	remove()
+
+	group.Interrupt(true)
+	if got := active.closes.Load(); got != 1 {
+		t.Fatalf("active closer closed %d times, want 1", got)
+	}
+	if got := detached.closes.Load(); got != 0 {
+		t.Fatalf("detached closer closed %d times, want 0", got)
+	}
 }
 
 func (c *reentrantCloseConn) Close() error {

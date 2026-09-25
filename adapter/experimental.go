@@ -175,6 +175,8 @@ type OutboundGroup interface {
 	Outbound
 	Now() string
 	All() []string
+	Selected(network string) Outbound
+	AttachConnection(closer io.Closer) (detach func())
 }
 
 type URLTestGroup interface {

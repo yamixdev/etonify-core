@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -237,9 +238,11 @@ type selectionTestGroup struct {
 	refresh  func()
 }
 
-func (g selectionTestGroup) Tag() string   { return g.tag }
-func (g selectionTestGroup) Now() string   { return "" }
-func (g selectionTestGroup) All() []string { return g.children }
+func (g selectionTestGroup) Tag() string                       { return g.tag }
+func (g selectionTestGroup) Now() string                       { return "" }
+func (g selectionTestGroup) All() []string                     { return g.children }
+func (g selectionTestGroup) Selected(string) adapter.Outbound  { return nil }
+func (g selectionTestGroup) AttachConnection(io.Closer) func() { return func() {} }
 func (g selectionTestGroup) RefreshURLTestSelection() {
 	if g.refresh != nil {
 		g.refresh()

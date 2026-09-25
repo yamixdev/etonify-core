@@ -72,24 +72,34 @@ func (m *Manager) newTrackerMetadata(metadata adapter.InboundContext, matchedRul
 		outbound     string
 		outboundType string
 	)
-	if matchOutbound != nil {
-		next = matchOutbound.Tag()
+	if len(metadata.OutboundChain) > 0 {
+		chain = make([]string, 0, len(metadata.OutboundChain))
+		for _, detour := range metadata.OutboundChain {
+			chain = append(chain, detour.Tag())
+		}
+		leaf := metadata.OutboundChain[len(metadata.OutboundChain)-1]
+		outbound = leaf.Tag()
+		outboundType = leaf.Type()
 	} else {
-		next = m.outbound.Default().Tag()
-	}
-	for {
-		detour, loaded := m.outbound.Outbound(next)
-		if !loaded {
-			break
+		if matchOutbound != nil {
+			next = matchOutbound.Tag()
+		} else {
+			next = m.outbound.Default().Tag()
 		}
-		chain = append(chain, next)
-		outbound = detour.Tag()
-		outboundType = detour.Type()
-		outboundGroup, isGroup := detour.(adapter.OutboundGroup)
-		if !isGroup {
-			break
+		for {
+			detour, loaded := m.outbound.Outbound(next)
+			if !loaded {
+				break
+			}
+			chain = append(chain, next)
+			outbound = detour.Tag()
+			outboundType = detour.Type()
+			outboundGroup, isGroup := detour.(adapter.OutboundGroup)
+			if !isGroup {
+				break
+			}
+			next = outboundGroup.Now()
 		}
-		next = outboundGroup.Now()
 	}
 	return TrackerMetadata{
 		ID:           id,

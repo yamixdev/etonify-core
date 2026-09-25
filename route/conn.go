@@ -110,6 +110,7 @@ func (m *ConnectionManager) NewConnection(ctx context.Context, this N.Dialer, co
 		remoteConn, err = this.DialContext(ctx, N.NetworkTCP, metadata.Destination)
 	}
 	if err != nil {
+		reportOutboundDialFailure(metadata.OutboundChain, N.NetworkTCP)
 		var remoteString string
 		if len(metadata.DestinationAddresses) > 0 {
 			remoteString = "[" + strings.Join(common.Map(metadata.DestinationAddresses, netip.Addr.String), ",") + "]"
@@ -198,6 +199,7 @@ func (m *ConnectionManager) NewPacketConnection(ctx context.Context, this N.Dial
 			remoteConn, err = this.DialContext(ctx, N.NetworkUDP, metadata.Destination)
 		}
 		if err != nil {
+			reportOutboundDialFailure(metadata.OutboundChain, N.NetworkUDP)
 			var remoteString string
 			if len(metadata.DestinationAddresses) > 0 {
 				remoteString = "[" + strings.Join(common.Map(metadata.DestinationAddresses, netip.Addr.String), ",") + "]"
@@ -227,6 +229,7 @@ func (m *ConnectionManager) NewPacketConnection(ctx context.Context, this N.Dial
 			remotePacketConn, err = this.ListenPacket(ctx, metadata.Destination)
 		}
 		if err != nil {
+			reportOutboundDialFailure(metadata.OutboundChain, N.NetworkUDP)
 			var dialerString string
 			if outbound, isOutbound := this.(adapter.Outbound); isOutbound {
 				dialerString = " using outbound/" + outbound.Type() + "[" + outbound.Tag() + "]"
@@ -239,8 +242,8 @@ func (m *ConnectionManager) NewPacketConnection(ctx context.Context, this N.Dial
 	}
 	err = N.ReportPacketConnHandshakeSuccess(conn, remotePacketConn)
 	if err != nil {
-		conn.Close()
 		remotePacketConn.Close()
+		N.CloseOnHandshakeFailure(conn, onClose, E.Cause(err, "report handshake success"))
 		m.logger.ErrorContext(ctx, "report handshake success: ", err)
 		return
 	}

@@ -22,6 +22,7 @@ import (
 	"github.com/sagernet/sing-box/service/oomkiller"
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/memory"
+	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/observable"
 	"github.com/sagernet/sing/service"
 
@@ -632,7 +633,7 @@ func (s *StartedService) readGroups() *Groups {
 			var item GroupItem
 			item.Tag = itemTag
 			item.Type = itemOutbound.Type()
-			if history := historyStorage.LoadCurrentURLTestHistory(group.RealTag(boxService.outboundManager, itemOutbound)); history != nil {
+			if history := historyStorage.LoadCurrentURLTestHistory(group.RealTag(itemOutbound, N.NetworkTCP)); history != nil {
 				item.UrlTestTime = history.Time.Unix()
 				item.UrlTestDelay = int32(history.Delay)
 				item.UrlTestStatus = adapter.URLTestHistoryStatus(history)
@@ -1193,7 +1194,7 @@ func (s *StartedService) SubscribeOutbounds(_ *emptypb.Empty, server grpc.Server
 					Tag:  ob.Tag(),
 					Type: ob.Type(),
 				}
-				if history := historyStorage.LoadCurrentURLTestHistory(group.RealTag(boxService.outboundManager, ob)); history != nil {
+				if history := historyStorage.LoadCurrentURLTestHistory(group.RealTag(ob, N.NetworkTCP)); history != nil {
 					item.UrlTestTime = history.Time.Unix()
 					item.UrlTestDelay = int32(history.Delay)
 				}
@@ -1204,7 +1205,7 @@ func (s *StartedService) SubscribeOutbounds(_ *emptypb.Empty, server grpc.Server
 					Tag:  ep.Tag(),
 					Type: ep.Type(),
 				}
-				if history := historyStorage.LoadCurrentURLTestHistory(group.RealTag(boxService.outboundManager, ep)); history != nil {
+				if history := historyStorage.LoadCurrentURLTestHistory(group.RealTag(ep, N.NetworkTCP)); history != nil {
 					item.UrlTestTime = history.Time.Unix()
 					item.UrlTestDelay = int32(history.Delay)
 				}
