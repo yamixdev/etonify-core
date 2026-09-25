@@ -13,7 +13,7 @@ legacy core wholesale.
 | Upstream branch | `testing` |
 | Upstream commit | `0b8995879f29a9b98ee027bc17b75e101445b238` |
 | Exact release tag | `v1.14.0` |
-| Go toolchain used by Etonify Android CI | `1.26.7` |
+| Go toolchain used by Etonify Android CI | `1.27.1` |
 | gomobile / gobind | `v0.1.13` |
 | Android NDK | `r28` |
 | OpenJDK | `17` |
