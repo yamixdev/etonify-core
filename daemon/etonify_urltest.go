@@ -494,7 +494,6 @@ func (s *StartedService) runURLTestSessionWithProbe(ctx context.Context, session
 			return
 		}
 		if session.isSuppressed(target.tag) {
-			session.recordResult(err == nil)
 			return
 		}
 		now := time.Now()
