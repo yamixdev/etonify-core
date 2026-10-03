@@ -83,6 +83,16 @@ func (s *Scope) Context() context.Context {
 
 func (s *Scope) Add(cleanup func() error) {
 	s.access.Lock()
+	if s.ctx.Err() != nil {
+		s.access.Unlock()
+		// An in-flight startup can publish a resource after Close drained the
+		// cleanup list. Close that resource immediately, without holding the
+		// scope lock: cleanup itself can register or remove other resources.
+		if err := cleanup(); err != nil && s.logger != nil {
+			s.logger.Error("close late resource: ", err)
+		}
+		return
+	}
 	s.cleanups = append(s.cleanups, cleanup)
 	s.access.Unlock()
 }
@@ -118,6 +128,10 @@ func (s *Scope) Start(name string, component Lifecycle, stage StartStage) error 
 	err = component.Start(stage, child)
 	monitor.Finish()
 	done()
+	if err == nil {
+		// Stop may have won while this startup stage was in flight.
+		err = s.ctx.Err()
+	}
 	if err != nil {
 		return E.Cause(err, stage, " ", name)
 	}

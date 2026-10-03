@@ -78,6 +78,8 @@ jobs:
           ./transport/v2rayxhttp
       - name: Race test QUIC runtime paths
         run: go test -race -tags with_quic ./dns/transport/quic ./transport/v2rayquic
+      - name: Race test TLS and REALITY compatibility
+        run: go test -race -tags with_utls ./common/tls
       - name: Resource and performance gate
         run: bash release/verify_etonify_performance.sh
 
