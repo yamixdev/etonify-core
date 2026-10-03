@@ -44,6 +44,12 @@ func TestRealTagResolvesNestedGroupForEachNetwork(t *testing.T) {
 	require.Equal(t, "udp-leaf", RealTag(outer, N.NetworkUDP))
 }
 
+func TestRealTagRejectsGroupCycle(t *testing.T) {
+	group := &realTagTestGroup{realTagTestOutbound: &realTagTestOutbound{tag: "loop"}}
+	group.tcp = group
+	require.Empty(t, RealTag(group, N.NetworkTCP))
+}
+
 func TestURLTestFailureInvalidatesSelectedLeafAndChoosesNext(t *testing.T) {
 	failed := &realTagTestOutbound{tag: "failed"}
 	working := &realTagTestOutbound{tag: "working"}

@@ -40,7 +40,6 @@ type Outbound struct {
 }
 
 func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.HysteriaOutboundOptions) (adapter.Outbound, error) {
-	options.UDPFragmentDefault = true
 	if options.TLS == nil || !options.TLS.Enabled {
 		return nil, C.ErrTLSRequired
 	}
@@ -132,6 +131,12 @@ func (h *Outbound) CloseIdleConnections() {
 	h.client.CloseIdleConnections()
 }
 
-func (h *Outbound) Close() error {
-	return h.client.CloseWithError(os.ErrClosed)
+func (h *Outbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+	if stage != adapter.StartStateInitialize {
+		return nil
+	}
+	scope.Add(func() error {
+		return h.client.CloseWithError(os.ErrClosed)
+	})
+	return nil
 }

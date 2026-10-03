@@ -13,26 +13,27 @@ import (
 )
 
 type InboundTLSOptions struct {
-	Enabled                          bool                                `json:"enabled,omitempty"`
-	ServerName                       string                              `json:"server_name,omitempty"`
-	Insecure                         bool                                `json:"insecure,omitempty"`
-	ALPN                             badoption.Listable[string]          `json:"alpn,omitempty" examples:"http/1.1,h2,h3"`
-	MinVersion                       string                              `json:"min_version,omitempty" enum:"1.0,1.1,1.2,1.3"`
-	MaxVersion                       string                              `json:"max_version,omitempty" enum:"1.0,1.1,1.2,1.3"`
-	CipherSuites                     badoption.Listable[string]          `json:"cipher_suites,omitempty"`
-	CurvePreferences                 badoption.Listable[CurvePreference] `json:"curve_preferences,omitempty"`
-	Certificate                      badoption.Listable[string]          `json:"certificate,omitempty"`
-	CertificatePath                  string                              `json:"certificate_path,omitempty"`
-	ClientAuthentication             ClientAuthType                      `json:"client_authentication,omitempty"`
-	ClientCertificate                badoption.Listable[string]          `json:"client_certificate,omitempty"`
-	ClientCertificatePath            badoption.Listable[string]          `json:"client_certificate_path,omitempty"`
-	ClientCertificatePublicKeySHA256 badoption.Listable[[]byte]          `json:"client_certificate_public_key_sha256,omitempty"`
-	Key                              badoption.Listable[string]          `json:"key,omitempty"`
-	KeyPath                          string                              `json:"key_path,omitempty"`
-	KernelTx                         bool                                `json:"kernel_tx,omitempty"`
-	KernelRx                         bool                                `json:"kernel_rx,omitempty"`
-	HandshakeTimeout                 badoption.Duration                  `json:"handshake_timeout,omitempty"`
-	CertificateProvider              *CertificateProviderOptions         `json:"certificate_provider,omitempty"`
+	Enabled                          bool                            `json:"enabled,omitempty"`
+	ServerName                       string                          `json:"server_name,omitempty"`
+	Insecure                         bool                            `json:"insecure,omitempty"`
+	ALPN                             badoption.Listable[string]      `json:"alpn,omitempty" examples:"http/1.1,h2,h3"`
+	MinVersion                       string                          `json:"min_version,omitempty" enum:"1.0,1.1,1.2,1.3"`
+	MaxVersion                       string                          `json:"max_version,omitempty" enum:"1.0,1.1,1.2,1.3"`
+	CipherSuites                     LegacyListable[string]          `json:"cipher_suites,omitempty"`
+	CurvePreferences                 LegacyListable[CurvePreference] `json:"curve_preferences,omitempty"`
+	Certificate                      badoption.Listable[string]      `json:"certificate,omitempty"`
+	CertificatePath                  string                          `json:"certificate_path,omitempty"`
+	ClientAuthentication             ClientAuthType                  `json:"client_authentication,omitempty"`
+	ClientCertificate                badoption.Listable[string]      `json:"client_certificate,omitempty"`
+	ClientCertificatePath            badoption.Listable[string]      `json:"client_certificate_path,omitempty"`
+	ClientCertificateSHA256          badoption.Listable[[]byte]      `json:"client_certificate_sha256,omitempty"`
+	ClientCertificatePublicKeySHA256 badoption.Listable[[]byte]      `json:"client_certificate_public_key_sha256,omitempty"`
+	Key                              badoption.Listable[string]      `json:"key,omitempty"`
+	KeyPath                          string                          `json:"key_path,omitempty"`
+	KernelTx                         bool                            `json:"kernel_tx,omitempty"`
+	KernelRx                         bool                            `json:"kernel_rx,omitempty"`
+	HandshakeTimeout                 badoption.Duration              `json:"handshake_timeout,omitempty"`
+	CertificateProvider              *CertificateProviderOptions     `json:"certificate_provider,omitempty"`
 
 	// Deprecated: use certificate_provider
 	ACME *InboundACMEOptions `json:"acme,omitempty" schema:"omit"`
@@ -115,8 +116,8 @@ type OutboundTLSOptions struct {
 	ALPN                       badoption.Listable[string]          `json:"alpn,omitempty" examples:"http/1.1,h2,h3"`
 	MinVersion                 string                              `json:"min_version,omitempty" enum:"1.0,1.1,1.2,1.3"`
 	MaxVersion                 string                              `json:"max_version,omitempty" enum:"1.0,1.1,1.2,1.3"`
-	CipherSuites               badoption.Listable[string]          `json:"cipher_suites,omitempty"`
-	CurvePreferences           badoption.Listable[CurvePreference] `json:"curve_preferences,omitempty"`
+	CipherSuites               LegacyListable[string]              `json:"cipher_suites,omitempty"`
+	CurvePreferences           LegacyListable[CurvePreference]     `json:"curve_preferences,omitempty"`
 	Certificate                badoption.Listable[string]          `json:"certificate,omitempty"`
 	CertificatePath            string                              `json:"certificate_path,omitempty"`
 	CertificatePublicKeySHA256 badoption.Listable[[]byte]          `json:"certificate_public_key_sha256,omitempty"`
@@ -299,4 +300,3 @@ func (h CertificateHash) MarshalJSON() ([]byte, error) {
 func (h CertificateHash) DescribeSchema(builder schema.Builder) (*schema.Node, error) {
 	return schema.StringNode(), nil
 }
-

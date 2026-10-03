@@ -15,6 +15,7 @@ import (
 	"github.com/sagernet/sing-box/common/probe"
 	"github.com/sagernet/sing-box/common/urltest"
 	M "github.com/sagernet/sing/common/metadata"
+	N "github.com/sagernet/sing/common/network"
 	"github.com/stretchr/testify/require"
 )
 
@@ -236,13 +237,13 @@ type selectionTestGroup struct {
 	tag      string
 	children []string
 	refresh  func()
+	selected map[string]adapter.Outbound
 }
 
-func (g selectionTestGroup) Tag() string                       { return g.tag }
-func (g selectionTestGroup) Now() string                       { return "" }
-func (g selectionTestGroup) All() []string                     { return g.children }
-func (g selectionTestGroup) Selected(string) adapter.Outbound  { return nil }
-func (g selectionTestGroup) AttachConnection(io.Closer) func() { return func() {} }
+func (g selectionTestGroup) Tag() string                              { return g.tag }
+func (g selectionTestGroup) All() []string                            { return g.children }
+func (g selectionTestGroup) Selected(network string) adapter.Outbound { return g.selected[network] }
+func (g selectionTestGroup) AttachConnection(io.Closer) func()        { return func() {} }
 func (g selectionTestGroup) RefreshURLTestSelection() {
 	if g.refresh != nil {
 		g.refresh()
@@ -270,6 +271,35 @@ func TestRefreshURLTestSelectionsChildrenBeforeParents(t *testing.T) {
 	}
 	refreshURLTestGroupSelections(manager, "select")
 	require.Equal(t, []string{"provider", "lowest", "select"}, order)
+}
+
+func TestResolveSelectedURLTestOutboundUsesTCPSelection(t *testing.T) {
+	tcpLeaf := mockLeafOutbound{tag: "tcp-leaf"}
+	udpLeaf := mockLeafOutbound{tag: "udp-leaf"}
+	nested := selectionTestGroup{tag: "nested", selected: map[string]adapter.Outbound{
+		N.NetworkTCP: tcpLeaf,
+		N.NetworkUDP: udpLeaf,
+	}}
+	root := selectionTestGroup{tag: "root", selected: map[string]adapter.Outbound{
+		N.NetworkTCP: nested,
+		N.NetworkUDP: udpLeaf,
+	}}
+	manager := selectionTestManager{outbounds: map[string]adapter.Outbound{
+		"root": root, "nested": nested, "tcp-leaf": tcpLeaf, "udp-leaf": udpLeaf,
+	}}
+	selected, err := resolveSelectedURLTestOutbound(manager, "root")
+	require.NoError(t, err)
+	require.Equal(t, "tcp-leaf", selected.Tag())
+
+	manager.outbounds["root"] = selectionTestGroup{tag: "root"}
+	_, err = resolveSelectedURLTestOutbound(manager, "root")
+	require.ErrorContains(t, err, "no selected member")
+
+	manager.outbounds["root"] = selectionTestGroup{tag: "root", selected: map[string]adapter.Outbound{
+		N.NetworkTCP: mockLeafOutbound{tag: "root"},
+	}}
+	_, err = resolveSelectedURLTestOutbound(manager, "root")
+	require.ErrorContains(t, err, "cyclic outbound group selection")
 }
 
 func TestURLTestSelectionUpdaterRefreshesFirstResultAndCoalescesRest(t *testing.T) {

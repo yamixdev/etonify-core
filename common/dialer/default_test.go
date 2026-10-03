@@ -18,7 +18,6 @@ func (o attributionTestOutbound) Tag() string { return o.tag }
 
 func TestDialAttributionUsesResolvedOutboundChain(t *testing.T) {
 	metadata := &adapter.InboundContext{
-		RouteOutbound: "automatic",
 		OutboundChain: []adapter.Outbound{
 			attributionTestOutbound{tag: "automatic"},
 			attributionTestOutbound{tag: "udp-leaf"},

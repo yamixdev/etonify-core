@@ -54,6 +54,8 @@ jobs:
           cache: true
       - name: Verify baseline
         run: bash release/verify_etonify_baseline.sh
+      - name: Check scoped shutdown regression
+        run: go test -race -count=1 -run '^TestScope' ./adapter
       - name: Verify libbox version source
         run: go test ./cmd/internal/build_libbox
       - name: Test
@@ -61,7 +63,7 @@ jobs:
       - name: Validate Android configuration corpus
         run: >-
           go test
-          -tags "with_gvisor,with_quic,with_utls"
+          -tags "with_quic,with_utls"
           -run 'TestEtonify(AndroidConfigCorpus|NaiveConfigSchema)'
           ./experimental/libbox
       - name: Race test Etonify runtime paths

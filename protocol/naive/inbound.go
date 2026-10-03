@@ -9,6 +9,7 @@ import (
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/inbound"
+	"github.com/sagernet/sing-box/common/badhttp"
 	"github.com/sagernet/sing-box/common/listener"
 	"github.com/sagernet/sing-box/common/tls"
 	"github.com/sagernet/sing-box/common/uot"
@@ -18,12 +19,13 @@ import (
 	"github.com/sagernet/sing-box/transport/v2rayhttp"
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/auth"
+	"github.com/sagernet/sing/common/buf"
+	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	aTLS "github.com/sagernet/sing/common/tls"
-	sHttp "github.com/sagernet/sing/protocol/http"
 
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c" //nolint:staticcheck
@@ -50,7 +52,6 @@ type Inbound struct {
 	authenticator    *auth.Authenticator
 	tlsConfig        tls.ServerConfig
 	httpServer       *http.Server
-	h3Server         io.Closer
 }
 
 func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.NaiveInboundOptions) (adapter.Inbound, error) {
@@ -87,7 +88,7 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 	return inbound, nil
 }
 
-func (n *Inbound) Start(stage adapter.StartStage) error {
+func (n *Inbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage != adapter.StartStateStart {
 		return nil
 	}
@@ -96,7 +97,9 @@ func (n *Inbound) Start(stage adapter.StartStage) error {
 		if err != nil {
 			return E.Cause(err, "create TLS config")
 		}
+		scope.Add(n.tlsConfig.Close)
 	}
+	scope.Add(n.listener.Close)
 	if common.Contains(n.network, N.NetworkTCP) {
 		tcpListener, err := n.listener.ListenTCP()
 		if err != nil {
@@ -124,12 +127,13 @@ func (n *Inbound) Start(stage adapter.StartStage) error {
 				n.logger.Error("http server serve error: ", sErr)
 			}
 		}()
+		scope.Add(n.httpServer.Close)
 	}
 
 	if common.Contains(n.network, N.NetworkUDP) {
 		http3Server, err := ConfigureHTTP3ListenerFunc(n.ctx, n.logger, n.listener, n, n.tlsConfig, n.options)
 		if err == nil {
-			n.h3Server = http3Server
+			scope.Add(http3Server.Close)
 		} else if len(n.network) > 1 {
 			n.logger.Warn(E.Cause(err, "naive http3 disabled"))
 		} else {
@@ -138,15 +142,6 @@ func (n *Inbound) Start(stage adapter.StartStage) error {
 	}
 
 	return nil
-}
-
-func (n *Inbound) Close() error {
-	return common.Close(
-		n.listener,
-		common.PtrOrNil(n.httpServer),
-		n.h3Server,
-		n.tlsConfig,
-	)
 }
 
 func (n *Inbound) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
@@ -160,7 +155,7 @@ func (n *Inbound) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		n.badRequest(ctx, request, E.New("missing naive padding"))
 		return
 	}
-	userName, password, authOk := sHttp.ParseBasicAuth(request.Header.Get("Proxy-Authorization"))
+	userName, password, authOk := badhttp.ParseBasicAuth(request.Header.Get("Proxy-Authorization"))
 	if authOk {
 		authOk = n.authenticator.Verify(userName, password)
 	}
@@ -180,14 +175,25 @@ func (n *Inbound) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 			hostPort = request.Host
 		}
 	}
-	source := sHttp.SourceAddress(request)
+	source := badhttp.SourceAddress(request)
 	destination := M.ParseSocksaddr(hostPort).Unwrap()
 
 	if hijacker, isHijacker := writer.(http.Hijacker); isHijacker {
-		conn, _, err := hijacker.Hijack()
+		conn, reader, err := hijacker.Hijack()
 		if err != nil {
 			n.badRequest(ctx, request, E.New("hijack failed"))
 			return
+		}
+		if cacheLen := reader.Reader.Buffered(); cacheLen > 0 {
+			cache := buf.NewSize(cacheLen)
+			_, err = cache.ReadFullFrom(reader.Reader, cacheLen)
+			if err != nil {
+				cache.Release()
+				conn.Close()
+				n.badRequest(ctx, request, E.Cause(err, "read cache"))
+				return
+			}
+			conn = bufio.NewCachedConn(conn, cache)
 		}
 		n.newConnection(ctx, false, &naiveConn{Conn: conn}, userName, source, destination)
 	} else {

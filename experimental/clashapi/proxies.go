@@ -77,7 +77,11 @@ func proxyInfo(server *Server, detour adapter.Outbound) *badjson.JSONObject {
 		info.Put("history", []*adapter.URLTestHistory{})
 	}
 	if group, isGroup := detour.(adapter.OutboundGroup); isGroup {
-		info.Put("now", group.Now())
+		var now string
+		if selected := group.Selected(N.NetworkTCP); selected != nil {
+			now = selected.Tag()
+		}
+		info.Put("now", now)
 		info.Put("all", group.All())
 	}
 	return &info

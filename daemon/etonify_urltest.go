@@ -16,6 +16,7 @@ import (
 	"github.com/sagernet/sing-box/common/probe"
 	"github.com/sagernet/sing-box/common/urltest"
 	E "github.com/sagernet/sing/common/exceptions"
+	N "github.com/sagernet/sing/common/network"
 
 	"google.golang.org/protobuf/types/known/emptypb"
 )
@@ -450,7 +451,11 @@ func resolveSelectedURLTestOutbound(outboundManager adapter.OutboundManager, tag
 			return nil, E.New("cyclic outbound group selection: ", tag)
 		}
 		visited[tag] = true
-		tag = strings.TrimSpace(outboundGroup.Now())
+		selected := outboundGroup.Selected(N.NetworkTCP)
+		if selected == nil {
+			return nil, E.New("outbound group has no selected member: ", outboundGroup.Tag())
+		}
+		tag = strings.TrimSpace(selected.Tag())
 		if tag == "" {
 			return nil, E.New("outbound group has no selected member: ", outboundGroup.Tag())
 		}

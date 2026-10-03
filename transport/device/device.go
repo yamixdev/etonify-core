@@ -1,4 +1,4 @@
-package openconnect
+package device
 
 import (
 	"context"
@@ -6,18 +6,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/sagernet/sing-openconnect"
 	"github.com/sagernet/sing-tun"
+	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 	"github.com/sagernet/sing/common/control"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
 	N "github.com/sagernet/sing/common/network"
-)
-
-const (
-	DefaultMTU     = 1500
-	PacketHeadroom = openconnect.PacketHeadroom
 )
 
 type PacketWriter func(packetBuffers []*buf.Buffer) error
@@ -32,64 +27,46 @@ type Device interface {
 	PortMTU() uint32
 	AttachReturn(returnPath tun.Return) error
 	DetachReturn(returnPath tun.Return) error
-	ReturnPath() (tun.Return, int)
+	FrontHeadroom() int
+	NewOutboundQueue(handler func(packetBuffers []*buf.Buffer)) *tun.OutboundQueue
 	Close() error
 }
 
-type DeviceOptions struct {
-	Context         context.Context
-	Logger          logger.ContextLogger
-	System          bool
-	Handler         tun.Handler
-	UDPTimeout      time.Duration
-	ICMPTimeout     time.Duration
-	UDPMapping      tun.NATMapping
-	UDPFiltering    tun.NATFiltering
-	UDPNATMax       uint32
-	InterfaceFinder control.InterfaceFinder
-	MemoryPressure  func() tun.MemoryPressure
-	Name            string
-	MTU             uint32
-	Configuration   Configuration
+type Options struct {
+	Context             context.Context
+	Logger              logger.ContextLogger
+	System              bool
+	Handler             tun.Handler
+	UDPTimeout          time.Duration
+	ICMPTimeout         time.Duration
+	UDPMapping          tun.NATMapping
+	UDPFiltering        tun.NATFiltering
+	UDPNATMax           uint32
+	InterfaceFinder     control.InterfaceFinder
+	MemoryPressure      func() tun.MemoryPressure
+	Name                string
+	NamePrefix          string
+	MTU                 uint32
+	PacketFrontHeadroom int
+	PacketRearHeadroom  int
+	Route               func(packet []byte) *tun.OutboundQueue
+	Configuration       Configuration
 }
 
 type Configuration struct {
-	MTU                      uint32
-	Addresses                []netip.Prefix
-	Routes                   []Route
-	ExcludedRoutes           []Route
-	DNS                      []netip.Addr
-	NBNS                     []netip.Addr
-	SearchDomains            []string
-	SplitDNS                 []string
-	SplitDNSRules            []SplitDNSRule
-	ProxyAutoConfigURL       string
-	Banner                   string
-	TunnelAllDNS             bool
-	ClientBypassProtocol     bool
-	IdleTimeout              time.Duration
-	AuthenticationExpiration time.Time
+	MTU       uint32
+	Address   []netip.Prefix
+	BlockIPv6 bool
 }
 
-type Route struct {
-	Prefix  netip.Prefix
-	Gateway netip.Addr
-	Metric  int
-}
-
-type SplitDNSRule struct {
-	Domains []string
-	Servers []netip.Addr
-}
-
-func NewDevice(options DeviceOptions) (Device, error) {
+func New(options Options) (Device, error) {
 	if !options.System {
 		return newStackDevice(options)
 	}
 	return newSystemStackDevice(options)
 }
 
-func newStack(options DeviceOptions, memoryTun *tun.MemoryTun) (*tun.Go, error) {
+func newStack(options Options, memoryTun *tun.MemoryTun) (*tun.Go, error) {
 	return tun.NewGo(tun.StackOptions{
 		Context:         options.Context,
 		Tun:             memoryTun,
@@ -132,7 +109,18 @@ func (d *baseDevice) processInboundBuffers(packetBuffers []*buf.Buffer, writeBuf
 		return writeBuffers(packetBuffers)
 	}
 	packets := make([][]byte, len(packetBuffers))
+	var temporaryBuffers []*buf.Buffer
+	defer func() {
+		buf.ReleaseMulti(temporaryBuffers)
+	}()
 	for i, packetBuffer := range packetBuffers {
+		if packetBuffer.Start() < state.headroom {
+			temporaryBuffer := buf.NewSize(state.headroom + packetBuffer.Len())
+			temporaryBuffer.Resize(state.headroom, 0)
+			common.Must1(temporaryBuffer.Write(packetBuffer.Bytes()))
+			temporaryBuffers = append(temporaryBuffers, temporaryBuffer)
+			packetBuffer = temporaryBuffer
+		}
 		packetBuffer.ExtendHeader(state.headroom)
 		packets[i] = packetBuffer.Bytes()
 	}
@@ -150,13 +138,9 @@ func (d *baseDevice) processInboundBuffers(packetBuffers []*buf.Buffer, writeBuf
 }
 
 func (d *baseDevice) AttachReturn(returnPath tun.Return) error {
-	headroom := returnPath.ReturnHeadroom()
-	if headroom > PacketHeadroom {
-		return E.New("return path headroom ", headroom, " exceeds available ", PacketHeadroom)
-	}
 	newState := &returnPathState{
 		returnPath: returnPath,
-		headroom:   headroom,
+		headroom:   returnPath.ReturnHeadroom(),
 	}
 	for {
 		currentState := d.returnState.Load()
@@ -180,12 +164,12 @@ func (d *baseDevice) DetachReturn(returnPath tun.Return) error {
 	return nil
 }
 
-func (d *baseDevice) ReturnPath() (tun.Return, int) {
+func (d *baseDevice) FrontHeadroom() int {
 	state := d.returnState.Load()
 	if state == nil {
-		return nil, 0
+		return 0
 	}
-	return state.returnPath, state.headroom
+	return state.headroom
 }
 
 type returnPathState struct {

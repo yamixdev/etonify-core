@@ -4,6 +4,7 @@ package netns
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"os"
 	"strconv"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/sagernet/sing-box/adapter"
 	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	F "github.com/sagernet/sing/common/format"
 	"github.com/sagernet/sing/common/logger"
@@ -41,14 +43,15 @@ func TestUnshareNamespace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = manager.Start(adapter.StartStateInitialize)
+	scope := adapter.NewScope(context.Background(), log.NewNOPFactory().Logger())
+	defer scope.Close()
+	err = manager.Start(adapter.StartStateInitialize, scope)
 	if err != nil {
 		if errors.Is(err, syscall.EPERM) || errors.Is(err, syscall.EACCES) {
 			t.Skip("network namespaces are not permitted in this test environment: ", err)
 		}
 		t.Fatal(err)
 	}
-	defer manager.Close()
 
 	pipeReader.SetReadDeadline(time.Now().Add(10 * time.Second))
 	pidLine, err := bufio.NewReader(pipeReader).ReadString('\n')
@@ -76,7 +79,7 @@ func TestUnshareNamespace(t *testing.T) {
 		t.Fatal("holder is in the current netns")
 	}
 
-	err = manager.Close()
+	err = scope.Close()
 	if err != nil {
 		t.Fatal(err)
 	}

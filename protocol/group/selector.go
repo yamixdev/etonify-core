@@ -25,17 +25,14 @@ func RegisterSelector(registry *outbound.Registry) {
 }
 
 var (
-	_ adapter.OutboundGroup           = (*Selector)(nil)
-	_ adapter.Referrer                = (*Selector)(nil)
-	_ adapter.ConnectionHandler       = (*Selector)(nil)
-	_ adapter.PacketConnectionHandler = (*Selector)(nil)
+	_ adapter.OutboundGroup = (*Selector)(nil)
+	_ adapter.Referrer      = (*Selector)(nil)
 )
 
 type Selector struct {
 	outbound.Adapter
 	ctx                          context.Context
 	outbound                     adapter.OutboundManager
-	connection                   adapter.ConnectionManager
 	logger                       logger.ContextLogger
 	tags                         []string
 	defaultTag                   string
@@ -51,7 +48,6 @@ func NewSelector(ctx context.Context, router adapter.Router, logger log.ContextL
 		Adapter:                      outbound.NewAdapter(C.TypeSelector, tag, nil, options.Outbounds),
 		ctx:                          ctx,
 		outbound:                     service.FromContext[adapter.OutboundManager](ctx),
-		connection:                   service.FromContext[adapter.ConnectionManager](ctx),
 		logger:                       logger,
 		tags:                         options.Outbounds,
 		defaultTag:                   options.Default,
@@ -74,7 +70,10 @@ func (s *Selector) Network() []string {
 	return selected.Network()
 }
 
-func (s *Selector) Start() error {
+func (s *Selector) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+	if stage != adapter.StartStateStart {
+		return nil
+	}
 	for i, tag := range s.tags {
 		detour, loaded := s.outbound.Outbound(tag)
 		if !loaded {
@@ -110,14 +109,6 @@ func (s *Selector) Start() error {
 	return nil
 }
 
-func (s *Selector) Now() string {
-	selected := s.selected.Load()
-	if selected == nil {
-		return s.tags[0]
-	}
-	return selected.Tag()
-}
-
 func (s *Selector) All() []string {
 	return s.tags
 }
@@ -131,7 +122,11 @@ func (s *Selector) AttachConnection(closer io.Closer) func() {
 }
 
 func (s *Selector) References() []string {
-	return []string{s.Now()}
+	selected := s.selected.Load()
+	if selected == nil {
+		return s.tags[:1]
+	}
+	return []string{selected.Tag()}
 }
 
 func (s *Selector) SelectOutbound(tag string) bool {
@@ -172,30 +167,6 @@ func (s *Selector) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 		return nil, err
 	}
 	return s.interruptGroup.NewPacketConn(conn, interrupt.IsExternalConnectionFromContext(ctx)), nil
-}
-
-func (s *Selector) NewConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
-	ctx = interrupt.ContextWithIsExternalConnection(ctx)
-	// Inbound connections bypass Selector.DialContext, so register them before
-	// dispatching to either a handler outbound or the connection manager.
-	conn = s.interruptGroup.NewConn(conn, true)
-	selected := s.selected.Load()
-	if outboundHandler, isHandler := selected.(adapter.ConnectionHandler); isHandler {
-		outboundHandler.NewConnection(ctx, conn, metadata, onClose)
-	} else {
-		s.connection.NewConnection(ctx, s, conn, metadata, onClose)
-	}
-}
-
-func (s *Selector) NewPacketConnection(ctx context.Context, conn N.PacketConn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
-	ctx = interrupt.ContextWithIsExternalConnection(ctx)
-	conn = s.interruptGroup.NewSingPacketConn(conn, true)
-	selected := s.selected.Load()
-	if outboundHandler, isHandler := selected.(adapter.PacketConnectionHandler); isHandler {
-		outboundHandler.NewPacketConnection(ctx, conn, metadata, onClose)
-	} else {
-		s.connection.NewPacketConnection(ctx, s, conn, metadata, onClose)
-	}
 }
 
 func RealTag(detour adapter.Outbound, network string) string {

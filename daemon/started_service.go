@@ -617,7 +617,9 @@ func (s *StartedService) readGroups() *Groups {
 		g.Tag = iGroup.Tag()
 		g.Type = iGroup.Type()
 		_, g.Selectable = iGroup.(*group.Selector)
-		g.Selected = iGroup.Now()
+		if selected := iGroup.Selected(N.NetworkTCP); selected != nil {
+			g.Selected = selected.Tag()
+		}
 		if boxService.cacheFile != nil {
 			if isExpand, loaded := boxService.cacheFile.LoadGroupExpand(g.Tag); loaded {
 				g.IsExpand = isExpand

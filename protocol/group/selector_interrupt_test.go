@@ -10,7 +10,7 @@ import (
 	"github.com/sagernet/sing-box/adapter/outbound"
 	"github.com/sagernet/sing-box/common/interrupt"
 	C "github.com/sagernet/sing-box/constant"
-	"github.com/sagernet/sing-box/route"
+	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -59,12 +59,10 @@ func TestSelectorInterruptsInboundHandlerConnection(t *testing.T) {
 		"second": second,
 	}}
 	ctx := service.ContextWith[adapter.OutboundManager](context.Background(), manager)
-	ctx = service.ContextWith[adapter.ConnectionManager](ctx, route.NewConnectionManager(logger.NOP()))
 	selector := &Selector{
 		Adapter:                      outbound.NewAdapter(C.TypeSelector, "selector", nil, []string{"first", "second"}),
 		ctx:                          ctx,
 		outbound:                     manager,
-		connection:                   service.FromContext[adapter.ConnectionManager](ctx),
 		logger:                       logger.NOP(),
 		tags:                         []string{"first", "second"},
 		defaultTag:                   "first",
@@ -72,13 +70,19 @@ func TestSelectorInterruptsInboundHandlerConnection(t *testing.T) {
 		interruptGroup:               interrupt.NewGroup(),
 		interruptExternalConnections: true,
 	}
-	if err := selector.Start(); err != nil {
+	scope := adapter.NewScope(ctx, log.NewNOPFactory().Logger())
+	t.Cleanup(func() { _ = scope.Close() })
+	if err := selector.Start(adapter.StartStateStart, scope); err != nil {
 		t.Fatal(err)
 	}
 
 	client, server := net.Pipe()
 	defer client.Close()
-	selector.NewConnection(context.Background(), server, adapter.InboundContext{
+	// Router registers the inbound connection with every group in the chain
+	// before dispatching directly to the selected leaf handler in alpha.10.
+	detach := selector.AttachConnection(server)
+	defer detach()
+	selector.Selected(N.NetworkTCP).(adapter.ConnectionHandler).NewConnection(context.Background(), server, adapter.InboundContext{
 		Network:     N.NetworkTCP,
 		Destination: M.ParseSocksaddr("example.com:443"),
 	}, func(error) {})

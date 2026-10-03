@@ -1,20 +1,28 @@
 package wireguard
 
 import (
+	"context"
 	"errors"
 	"os"
 	"testing"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/log"
 )
 
 func TestEndpointStartRefusesPendingClose(t *testing.T) {
 	endpoint := &Endpoint{}
+	scope := adapter.NewScope(context.Background(), log.NewNOPFactory().Logger())
+	t.Cleanup(func() {
+		if err := scope.Close(); err != nil {
+			t.Errorf("close scope: %v", err)
+		}
+	})
 	endpoint.lifecycleAccess.Lock()
 
 	result := make(chan error, 1)
 	go func() {
-		result <- endpoint.Start(adapter.StartStateStart)
+		result <- endpoint.Start(adapter.StartStateStart, scope)
 	}()
 
 	if !endpoint.beginClose() {

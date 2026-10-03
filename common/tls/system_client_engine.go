@@ -23,8 +23,8 @@ type systemTLSConfig struct {
 	maxVersion                 uint16
 	insecure                   bool
 	anchorOnly                 bool
-	certificatePublicKeySHA256 [][]byte
 	certificateSHA256          [][]byte
+	certificatePublicKeySHA256 [][]byte
 	timeFunc                   func() time.Time
 	store                      adapter.CertificateStore
 }
@@ -70,8 +70,8 @@ func (c *systemTLSConfig) clone() systemTLSConfig {
 		maxVersion:                 c.maxVersion,
 		insecure:                   c.insecure,
 		anchorOnly:                 c.anchorOnly,
-		certificatePublicKeySHA256: append([][]byte(nil), c.certificatePublicKeySHA256...),
 		certificateSHA256:          append([][]byte(nil), c.certificateSHA256...),
+		certificatePublicKeySHA256: append([][]byte(nil), c.certificatePublicKeySHA256...),
 		timeFunc:                   c.timeFunc,
 		store:                      c.store,
 	}

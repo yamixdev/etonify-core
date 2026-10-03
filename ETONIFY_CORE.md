@@ -1,18 +1,18 @@
 # Etonify core
 
 This branch keeps Etonify-specific Android integration on top of an exact
-stable `sing-box` release tag. Upstream changes and Etonify changes must remain in
+prerelease `sing-box` release tag. Upstream changes and Etonify changes must remain in
 separate commits so the fork can be rebased and audited without copying the
 legacy core wholesale.
 
-## Stable baseline
+## Pinned test baseline
 
 | Input | Pinned value |
 | --- | --- |
 | Upstream repository | `https://github.com/SagerNet/sing-box.git` |
 | Upstream branch | `testing` |
-| Upstream commit | `0b8995879f29a9b98ee027bc17b75e101445b238` |
-| Exact release tag | `v1.14.0` |
+| Upstream commit | `c992297988288565a24a6d36e2cf4d77cb835fcd` |
+| Exact release tag | `v1.15.0-alpha.10` |
 | Go toolchain used by Etonify Android CI | `1.27.1` |
 | gomobile / gobind | `v0.1.13` |
 | Android NDK | `r28` |

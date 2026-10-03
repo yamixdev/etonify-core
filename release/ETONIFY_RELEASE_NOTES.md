@@ -1,5 +1,13 @@
 ## Etonify Core 1.15 alpha test base
 
+### 1.15.0-alpha.10-etonify.1
+
+- Rebase the test baseline to the exact upstream `v1.15.0-alpha.10` release.
+- Adapt Etonify runtime cancellation, network binding and managed URLTest to the upstream scoped lifecycle.
+- Preserve Etonify XHTTP/REALITY, VLESS encryption, external IP lookup and versioned Android capabilities.
+- Keep Android API 24 and ARM-only builds without gVisor or unused VPN protocol integrations.
+- Verify Go tests, race checks and Android AAR exclusively in GitHub Actions. Device validation remains required.
+
 ### 1.15.0-alpha.3-etonify.5
 
 - Verify full NaiveProxy (`with_naive_outbound`) and AnyTLS compilation in core builds.
@@ -35,11 +43,11 @@
 - Track active outbound and DNS references, and close idle resources that are no longer used by routing or the selected proxy group.
 - Preserve Etonify's bounded URLTest sessions, XHTTP lifecycle fixes and Android network binding behavior on the 1.15 codebase.
 
-This Android library is built from the prerelease sing-box `1.15.0-alpha.3` tag with Etonify's mobile integration applied on top. It is a test core artifact, not an APK, and must pass device validation before production use.
+This Android library is built from the prerelease sing-box `1.15.0-alpha.10` tag with Etonify's mobile integration applied on top. It is a test core artifact, not an APK, and must pass device validation before production use.
 
 ### Included
 
-- The sing-box 1.15.0-alpha.3 networking, DNS, routing, TUN, QUIC and Android baseline.
+- The sing-box 1.15.0-alpha.10 networking, DNS, routing, TUN, QUIC and Android baseline.
 - The new sing-tun TCP/IP stack selected by omitting the deprecated `stack` field.
 - Reference-aware idle connection management for outbounds and DNS transports.
 - Versioned Etonify capabilities so the client enables only features implemented by this core.

@@ -3,6 +3,7 @@ package group
 import (
 	"context"
 	"net"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -194,4 +195,70 @@ func TestUnmanagedURLTestStillProbesOnInterfaceChange(t *testing.T) {
 	}
 	(&URLTest{group: group}).InterfaceUpdated(ctx)
 	require.Eventually(t, func() bool { return dialAttempts.Load() > 0 }, time.Second, 10*time.Millisecond)
+}
+
+func TestURLTestScopeClosesGroupBeforeStartedStage(t *testing.T) {
+	ctx := pause.WithDefaultManager(context.Background())
+	history := U.NewHistoryStorage()
+	history.SetExternallyManaged(true)
+	ctx = service.ContextWithPtr(ctx, history)
+	probe := &urlTestSelectionOutbound{tag: "probe"}
+	manager := &selectorInterruptManager{items: map[string]adapter.Outbound{"probe": probe}}
+	scope := adapter.NewScope(ctx, log.NewNOPFactory().Logger())
+	t.Cleanup(func() { _ = scope.Close() })
+	outbound := &URLTest{ctx: ctx, outbound: manager, tags: []string{"probe"}, logger: log.NewNOPFactory().Logger()}
+	require.NoError(t, outbound.Start(adapter.StartStateStart, scope))
+	require.NoError(t, scope.Close())
+	require.ErrorIs(t, outbound.group.ctx.Err(), context.Canceled)
+
+	// A late finish-start or connection must not resurrect a closed scheduler.
+	outbound.group.PostStart()
+	outbound.group.Touch()
+	require.False(t, outbound.group.started)
+	require.Nil(t, outbound.group.ticker)
+	select {
+	case <-outbound.group.close:
+	default:
+		t.Fatal("scope close did not tear down group before finish-start")
+	}
+}
+
+type cancelAwareURLTestOutbound struct {
+	urlTestSelectionOutbound
+	started chan struct{}
+	once    sync.Once
+}
+
+func (o *cancelAwareURLTestOutbound) DialContext(ctx context.Context, _ string, _ M.Socksaddr) (net.Conn, error) {
+	o.once.Do(func() { close(o.started) })
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func TestURLTestGroupCloseCancelsManualProbeWithoutTicker(t *testing.T) {
+	ctx := pause.WithDefaultManager(context.Background())
+	history := U.NewHistoryStorage()
+	ctx = service.ContextWithPtr(ctx, history)
+	probe := &cancelAwareURLTestOutbound{urlTestSelectionOutbound: urlTestSelectionOutbound{tag: "probe"}, started: make(chan struct{})}
+	group, err := NewURLTestGroup(ctx, nil, log.NewNOPFactory().Logger(), []adapter.Outbound{probe}, "http://example.com", time.Second, 50, time.Minute, false)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = group.Close() })
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = group.URLTest(context.Background())
+	}()
+	select {
+	case <-probe.started:
+	case <-time.After(time.Second):
+		t.Fatal("manual probe did not start")
+	}
+	require.NoError(t, group.Close())
+	require.NoError(t, group.Close())
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("group close did not cancel the manual probe")
+	}
+	require.Nil(t, history.LoadCurrentURLTestHistory("probe"), "shutdown cancellation must not invalidate probe history")
 }

@@ -1,4 +1,4 @@
-package openconnect
+package device
 
 import (
 	"context"
@@ -19,7 +19,7 @@ var _ Device = (*stackDevice)(nil)
 type stackDevice struct {
 	baseDevice
 	stateAccess  sync.RWMutex
-	options      DeviceOptions
+	options      Options
 	stack        *tun.Go
 	memoryTun    *tun.MemoryTun
 	inet4Address netip.Addr
@@ -27,23 +27,27 @@ type stackDevice struct {
 	closeOnce    sync.Once
 }
 
-func newStackDevice(options DeviceOptions) (*stackDevice, error) {
-	if options.MTU == 0 {
-		options.MTU = DefaultMTU
-	}
+func newStackDevice(options Options) (*stackDevice, error) {
 	device := &stackDevice{
 		options: options,
 	}
-	device.inet4Address, device.inet6Address = firstAddresses(options.Configuration.Addresses)
+	device.inet4Address, device.inet6Address = firstAddresses(options.Configuration.Address)
 	device.memoryTun = tun.NewMemoryTun(tun.MemoryTunOptions{
 		MTU:       int(options.MTU),
-		Headroom:  PacketHeadroom,
-		RearSpace: systemDevicePacketRearSpace,
-		Outbound:  device.writeOutbound,
+		Headroom:  options.PacketFrontHeadroom,
+		RearSpace: options.PacketRearHeadroom,
+		Outbound: func(packetBuffers []*buf.Buffer) {
+			err := device.writeOutbound(packetBuffers)
+			if err != nil {
+				options.Logger.Debug(E.Cause(err, "write packet batch"))
+			}
+		},
+		Route: options.Route,
 	})
 	var err error
 	device.stack, err = newStack(options, device.memoryTun)
 	if err != nil {
+		device.memoryTun.Close()
 		return nil, err
 	}
 	return device, nil
@@ -61,7 +65,7 @@ func (d *stackDevice) UpdateConfiguration(configuration Configuration) error {
 		d.memoryTun.UpdateMTU(int(configuration.MTU))
 	}
 	d.options.Configuration = configuration
-	d.inet4Address, d.inet6Address = firstAddresses(configuration.Addresses)
+	d.inet4Address, d.inet6Address = firstAddresses(configuration.Address)
 	return nil
 }
 
@@ -120,6 +124,9 @@ func (d *stackDevice) bindAddress(destination M.Socksaddr) (netip.Addr, error) {
 		}
 		return d.inet4Address, nil
 	}
+	if d.options.Configuration.BlockIPv6 {
+		return netip.Addr{}, E.New("IPv6 is blocked")
+	}
 	if !d.inet6Address.IsValid() {
 		return netip.Addr{}, E.New("missing IPv6 local address")
 	}
@@ -136,6 +143,10 @@ func (d *stackDevice) PortMTU() uint32 {
 	d.stateAccess.RLock()
 	defer d.stateAccess.RUnlock()
 	return d.options.MTU
+}
+
+func (d *stackDevice) NewOutboundQueue(handler func(packetBuffers []*buf.Buffer)) *tun.OutboundQueue {
+	return d.memoryTun.NewOutboundQueue(handler)
 }
 
 func (d *stackDevice) Close() error {

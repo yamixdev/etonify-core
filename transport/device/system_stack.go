@@ -1,8 +1,9 @@
-package openvpn
+package device
 
 import (
 	"net/netip"
 
+	"github.com/sagernet/sing-tun"
 	"github.com/sagernet/sing-tun/gtcpip/header"
 	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -15,7 +16,7 @@ type systemStackDevice struct {
 	stackDevice *stackDevice
 }
 
-func newSystemStackDevice(options DeviceOptions) (*systemStackDevice, error) {
+func newSystemStackDevice(options Options) (*systemStackDevice, error) {
 	system, err := newSystemDevice(options)
 	if err != nil {
 		return nil, err
@@ -25,7 +26,6 @@ func newSystemStackDevice(options DeviceOptions) (*systemStackDevice, error) {
 		system.Close()
 		return nil, err
 	}
-	stackDevice.logRouteOptions = false
 	return &systemStackDevice{
 		systemDevice: system,
 		stackDevice:  stackDevice,
@@ -98,12 +98,22 @@ func (d *systemStackDevice) writeBuffers(packetBuffers []*buf.Buffer) error {
 func packetDestination(packet []byte) netip.Addr {
 	switch header.IPVersion(packet) {
 	case header.IPv4Version:
+		if len(packet) < header.IPv4MinimumSize {
+			return netip.Addr{}
+		}
 		return header.IPv4(packet).DestinationAddr()
 	case header.IPv6Version:
+		if len(packet) < header.IPv6MinimumSize {
+			return netip.Addr{}
+		}
 		return header.IPv6(packet).DestinationAddr()
 	default:
 		return netip.Addr{}
 	}
+}
+
+func (d *systemStackDevice) NewOutboundQueue(handler func(packetBuffers []*buf.Buffer)) *tun.OutboundQueue {
+	return d.stackDevice.NewOutboundQueue(handler)
 }
 
 func (d *systemStackDevice) Close() error {

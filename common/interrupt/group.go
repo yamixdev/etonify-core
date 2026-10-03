@@ -57,19 +57,17 @@ func (g *Group) NewSingPacketConn(conn N.PacketConn, isExternal bool) N.PacketCo
 
 func (g *Group) Interrupt(interruptExternalConnections bool) {
 	g.access.Lock()
-	var toDelete []*list.Element[*groupConnItem]
-	var toClose []io.Closer
-	for element := g.connections.Front(); element != nil; element = element.Next() {
+	var closers []io.Closer
+	for element := g.connections.Front(); element != nil; {
+		nextElement := element.Next()
 		if !element.Value.isExternal || interruptExternalConnections {
-			toDelete = append(toDelete, element)
-			toClose = append(toClose, element.Value.conn)
+			closers = append(closers, element.Value.conn)
+			g.connections.Remove(element)
 		}
-	}
-	for _, element := range toDelete {
-		g.connections.Remove(element)
+		element = nextElement
 	}
 	g.access.Unlock()
-	for _, conn := range toClose {
-		_ = conn.Close()
+	for _, closer := range closers {
+		_ = closer.Close()
 	}
 }

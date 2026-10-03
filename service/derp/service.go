@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -48,6 +49,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/go-chi/render"
+	"go4.org/mem"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c" //nolint:staticcheck
 )
@@ -67,6 +69,8 @@ type Service struct {
 	configPath           string
 	verifyClientEndpoint []string
 	verifyClientURL      []*option.DERPVerifyClientURLOptions
+	verifyClientInbound  []string
+	verifyClientKeys     []key.NodePublic
 	home                 string
 	meshKey              string
 	meshKeyPath          string
@@ -94,6 +98,15 @@ func NewService(ctx context.Context, logger log.ContextLogger, tag string, optio
 		if err != nil {
 			return nil, E.Cause(err, "invalid mesh_psk")
 		}
+	}
+
+	verifyClientKeys := make([]key.NodePublic, 0, len(options.VerifyClientKey))
+	for index, encodedKey := range options.VerifyClientKey {
+		publicKey, err := boxScale.DecodeTailcatKey(encodedKey)
+		if err != nil {
+			return nil, E.Cause(err, "parse verify_client_key[", index, "]")
+		}
+		verifyClientKeys = append(verifyClientKeys, key.NodePublicFromRaw32(mem.B(publicKey[:])))
 	}
 
 	var stunListener *listener.Listener
@@ -127,6 +140,8 @@ func NewService(ctx context.Context, logger log.ContextLogger, tag string, optio
 		configPath:           configPath,
 		verifyClientEndpoint: options.VerifyClientEndpoint,
 		verifyClientURL:      options.VerifyClientURL,
+		verifyClientInbound:  options.VerifyClientInbound,
+		verifyClientKeys:     verifyClientKeys,
 		home:                 options.Home,
 		meshKey:              options.MeshPSK,
 		meshKeyPath:          options.MeshPSKFile,
@@ -134,7 +149,7 @@ func NewService(ctx context.Context, logger log.ContextLogger, tag string, optio
 	}, nil
 }
 
-func (d *Service) Start(stage adapter.StartStage) error {
+func (d *Service) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	switch stage {
 	case adapter.StartStateStart:
 		config, err := readDERPConfig(d.ctx, filemanager.BasePath(d.ctx, d.configPath))
@@ -160,6 +175,30 @@ func (d *Service) Start(stage adapter.StartStage) error {
 			}
 			server.SetVerifyClientHTTPClient(httpClients)
 			server.SetVerifyClientURL(urls)
+		}
+
+		verifyClientKeys := slices.Clone(d.verifyClientKeys)
+		if len(d.verifyClientInbound) > 0 {
+			inboundManager := service.FromContext[adapter.InboundManager](d.ctx)
+			for _, inboundTag := range d.verifyClientInbound {
+				inbound, loaded := inboundManager.Get(inboundTag)
+				if !loaded {
+					return E.New("verify_client_inbound: inbound not found: ", inboundTag)
+				}
+				tailcatInbound, isTailcat := inbound.(*boxScale.TailcatInbound)
+				if !isTailcat {
+					return E.New("verify_client_inbound: inbound is not Tailcat: ", inboundTag)
+				}
+				userKeys := tailcatInbound.UserPublicKeys()
+				if len(userKeys) == 0 {
+					return E.New("verify_client_inbound: inbound has no users: ", inboundTag)
+				}
+				verifyClientKeys = append(verifyClientKeys, tailcatInbound.PublicKey())
+				verifyClientKeys = append(verifyClientKeys, userKeys...)
+			}
+		}
+		if len(verifyClientKeys) > 0 {
+			server.SetVerifyClientKeys(verifyClientKeys)
 		}
 
 		if d.meshKey != "" {
@@ -205,11 +244,13 @@ func (d *Service) Start(stage adapter.StartStage) error {
 		if err != nil {
 			return err
 		}
+		scope.Add(d.tlsConfig.Close)
 
 		tcpListener, err := d.listener.ListenTCP()
 		if err != nil {
 			return err
 		}
+		scope.Add(d.listener.Close)
 		if len(d.tlsConfig.NextProtos()) == 0 {
 			d.tlsConfig.SetNextProtos([]string{http2.NextProtoTLS, "http/1.1"})
 		} else if !common.Contains(d.tlsConfig.NextProtos(), http2.NextProtoTLS) {
@@ -227,6 +268,7 @@ func (d *Service) Start(stage adapter.StartStage) error {
 			if err != nil {
 				return err
 			}
+			scope.Add(d.stunListener.Close)
 			go d.loopSTUNPacket(stunConn.(*net.UDPConn))
 		}
 	case adapter.StartStatePostStart:
@@ -333,14 +375,6 @@ func (d *Service) startMeshWithHost(derpServer *derpserver.Server, server *optio
 	notifyError := func(err error) { d.logger.Error(err) }
 	go meshClient.RunWatchConnectionLoop(context.Background(), derpServer.PublicKey(), logf, add, remove, notifyError)
 	return nil
-}
-
-func (d *Service) Close() error {
-	err := common.Close(
-		common.PtrOrNil(d.listener),
-		d.tlsConfig,
-	)
-	return err
 }
 
 var homePage = `

@@ -150,7 +150,6 @@ func (r *Router) routeConnection(ctx context.Context, conn net.Conn, metadata ad
 		buf.ReleaseMulti(buffers)
 		return err
 	}
-
 	for _, buffer := range buffers {
 		conn = bufio.NewCachedConn(conn, buffer)
 	}
@@ -805,7 +804,6 @@ func (r *Router) actionSniff(
 			}
 			goto finally
 		}
-		packetBuffers = inputPacketBuffers
 		for {
 			var (
 				sniffBuffer = buf.NewPacket()

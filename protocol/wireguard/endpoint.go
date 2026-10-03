@@ -140,18 +140,28 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 	return ep, nil
 }
 
-func (w *Endpoint) Start(stage adapter.StartStage) error {
+func (w *Endpoint) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	// A user stop may arrive while the endpoint manager is still starting.
 	// Keep each transport start stage atomic with respect to Close so the
 	// underlying TUN device cannot be torn down underneath Start.
 	w.lifecycleAccess.Lock()
-	defer w.lifecycleAccess.Unlock()
 	if w.closing.Load() {
+		w.lifecycleAccess.Unlock()
 		return os.ErrClosed
 	}
+	if stage == adapter.StartStateInitialize {
+		err := w.endpoint.Initialize(oomkiller.MemoryPressure(w.ctx))
+		w.lifecycleAccess.Unlock()
+		if err != nil {
+			return err
+		}
+		// A canceled scope may run the cleanup immediately. Register it
+		// outside lifecycleAccess so Close can acquire the same mutex.
+		scope.Add(w.Close)
+		return nil
+	}
+	defer w.lifecycleAccess.Unlock()
 	switch stage {
-	case adapter.StartStateInitialize:
-		return w.endpoint.Initialize(oomkiller.MemoryPressure(w.ctx))
 	case adapter.StartStateStart:
 		return w.endpoint.Start(false)
 	case adapter.StartStatePostStart:
@@ -160,6 +170,12 @@ func (w *Endpoint) Start(stage adapter.StartStage) error {
 			return err
 		}
 		w.started.Store(true)
+		scope.Add(func() error {
+			w.bindAccess.Lock()
+			w.started.Store(false)
+			w.bindAccess.Unlock()
+			return nil
+		})
 	}
 	return nil
 }
@@ -233,7 +249,7 @@ func (w *Endpoint) JudgeFlow(network uint8, source netip.AddrPort, destination n
 			return tun.FlowVerdict{Action: tun.ActionAccept}
 		}
 	}
-	return adapter.JudgeFlow(w.router, w.Tag(), w.Type(), network, source, destination, firstPacket)
+	return adapter.JudgeFlow(w.router, adapter.InboundContext{Inbound: w.Tag(), InboundType: w.Type()}, network, source, destination, firstPacket)
 }
 
 func (w *Endpoint) NewDNSPacket(payload []byte, source M.Socksaddr, destination M.Socksaddr, writer N.PacketWriter) {

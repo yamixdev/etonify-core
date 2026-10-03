@@ -13,6 +13,7 @@ import (
 	"github.com/sagernet/quic-go"
 	"github.com/sagernet/quic-go/http3"
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/badhttp"
 	"github.com/sagernet/sing-box/common/dialer"
 	"github.com/sagernet/sing-box/common/tls"
 	C "github.com/sagernet/sing-box/constant"
@@ -26,7 +27,6 @@ import (
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
-	sHTTP "github.com/sagernet/sing/protocol/http"
 
 	mDNS "github.com/miekg/dns"
 )
@@ -89,7 +89,7 @@ func NewHTTP3(ctx context.Context, logger log.ContextLogger, tag string, options
 	if path == "" {
 		path = "/dns-query"
 	}
-	err = sHTTP.URLSetPath(&destinationURL, path)
+	err = badhttp.URLSetPath(&destinationURL, path)
 	if err != nil {
 		return nil, err
 	}
@@ -137,17 +137,16 @@ func (t *HTTP3Transport) newTransport() *http3.Transport {
 	}
 }
 
-func (t *HTTP3Transport) Start(stage adapter.StartStage) error {
+func (t *HTTP3Transport) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage != adapter.StartStateStart {
 		return nil
 	}
+	scope.Add(func() error {
+		t.transportAccess.Lock()
+		defer t.transportAccess.Unlock()
+		return t.transport.Close()
+	})
 	return dialer.InitializeDetour(t.dialer)
-}
-
-func (t *HTTP3Transport) Close() error {
-	t.transportAccess.Lock()
-	defer t.transportAccess.Unlock()
-	return t.transport.Close()
 }
 
 func (t *HTTP3Transport) Reset() {

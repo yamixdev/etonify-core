@@ -11,6 +11,18 @@ import (
 	E "github.com/sagernet/sing/common/exceptions"
 )
 
+// Client pins retain Etonify's verified CA-chain support while allowing either
+// certificate or public-key pins to match, as in upstream alpha.10.
+func verifyClientPinnedCertificate(certificateHashes [][]byte, publicKeyHashes [][]byte, rawCerts [][]byte, serverName string, roots *x509.CertPool) error {
+	if len(certificateHashes) > 0 {
+		err := VerifyCertificateSHA256(certificateHashes, rawCerts, serverName, roots)
+		if err == nil || len(publicKeyHashes) == 0 {
+			return err
+		}
+	}
+	return VerifyPinnedCertificate(nil, publicKeyHashes, rawCerts)
+}
+
 // VerifyCertificateSHA256 verifies peer certificates against a set of pinned SHA-256 certificate hashes.
 // It supports both leaf certificate pinning (trusted directly) and intermediate/root CA certificate pinning
 // (verifies the leaf against the pinned CA and the target server name).
