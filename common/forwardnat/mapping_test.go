@@ -94,7 +94,7 @@ func TestForwardNATSelectorExhaustion(t *testing.T) {
 	for _, n := range []uint16{50000, 50001} {
 		f.port.occupied[netip.AddrPortFrom(netip.MustParseAddr("192.0.2.1"), n)] = true
 	}
-	require.True(t, f.stage.Dispatch(udpPacket(t, client, server, []byte("request"))))
+	require.True(t, f.dispatchNew(udpPacket(t, client, server, []byte("request"))))
 	f.stage.Flush()
 	require.Empty(t, f.port.packets)
 	require.Empty(t, f.port.reserved)
@@ -154,7 +154,7 @@ func TestForwardNATRepeatedResetExhaustionAndExpansion(t *testing.T) {
 		f.stage.Flush()
 		f.port.expand = expand
 		before := len(f.port.packets)
-		require.True(t, f.stage.Dispatch(udpPacket(t, netip.MustParseAddrPort("10.0.0.3:50000"), server, []byte("new"))))
+		require.True(t, f.dispatchNew(udpPacket(t, netip.MustParseAddrPort("10.0.0.3:50000"), server, []byte("new"))))
 		f.stage.Flush()
 		if expand {
 			require.Len(t, f.port.packets, before+1)
@@ -164,7 +164,7 @@ func TestForwardNATRepeatedResetExhaustionAndExpansion(t *testing.T) {
 			require.Empty(t, f.writeback.packets)
 			f.dispatcher.ResetNetwork()
 			f.stage.Flush()
-			require.True(t, f.stage.Dispatch(udpPacket(t, netip.MustParseAddrPort("10.0.0.4:50000"), server, []byte("third"))))
+			require.True(t, f.dispatchNew(udpPacket(t, netip.MustParseAddrPort("10.0.0.4:50000"), server, []byte("third"))))
 			f.stage.Flush()
 			require.Len(t, f.port.packets, before+1, "both selectors quarantined")
 		} else {

@@ -18,6 +18,7 @@ type forwardFixture struct {
 	port       *fixturePort
 	writeback  *packetCapture
 	handler    *fixtureHandler
+	judged     chan struct{}
 }
 
 func newForwardFixture(t *testing.T, options tun.UDPNatOptions) *forwardFixture {
@@ -26,7 +27,8 @@ func newForwardFixture(t *testing.T, options tun.UDPNatOptions) *forwardFixture 
 	w := &packetCapture{}
 	h := &fixtureHandler{port: p}
 	d := tun.NewForwardDispatcher(h, w, logger.NOP(), options, time.Minute)
-	f := &forwardFixture{t: t, dispatcher: d, stage: d.NewStage(nil), port: p, writeback: w, handler: h}
+	judged := make(chan struct{}, 16)
+	f := &forwardFixture{t: t, dispatcher: d, stage: d.NewStage(nil, func() { judged <- struct{}{} }), port: p, writeback: w, handler: h, judged: judged}
 	t.Cleanup(d.Close)
 	return f
 }
@@ -36,10 +38,33 @@ func (f *forwardFixture) send(source, destination netip.AddrPort, payload string
 	before := len(f.port.packets)
 	require.True(f.t, f.stage.Dispatch(udpPacket(f.t, source, destination, []byte(payload))))
 	f.stage.Flush()
+	for len(f.port.packets) == before {
+		f.resumeJudged()
+	}
 	require.Len(f.t, f.port.packets, before+1)
 	packet := f.port.packets[before]
 	assertUDPChecksum(f.t, packet)
 	return packet
+}
+
+func (f *forwardFixture) resumeJudged() {
+	f.t.Helper()
+	select {
+	case <-f.judged:
+	case <-time.After(2 * time.Second):
+		f.t.Fatal("flow judgement did not complete")
+	}
+	f.stage.ResumeJudged(func([]byte, tun.ForwardFrameMeta) {
+		f.t.Fatal("unexpected accept path in NAT fixture")
+	})
+	f.stage.Flush()
+}
+
+func (f *forwardFixture) dispatchNew(packet []byte) bool {
+	f.t.Helper()
+	handled := f.stage.Dispatch(packet)
+	f.resumeJudged()
+	return handled
 }
 
 type packetCapture struct{ packets [][]byte }
