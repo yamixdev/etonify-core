@@ -1,5 +1,12 @@
 ## Etonify Core 1.15 alpha test base
 
+### 1.15.0-alpha.10-etonify.4
+
+- Add the optional standalone Android arm64 root daemon with signed module delivery, restricted app-UID RPC access and owned routing recovery.
+- Reserve routing priorities before Android explicit-network rules without deleting the system legacy routing rule.
+- Keep root routing ownership opt-in; ordinary Android VPN continues to use its existing lifecycle.
+- Root mode remains experimental and requires device verification of routing, SELinux and cleanup.
+
 ### 1.15.0-alpha.10-etonify.3
 
 - Integrate the forward NAT/fragment backport using the pinned `yamixdev/sing-tun` fork, not a cached upstream module.

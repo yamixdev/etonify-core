@@ -286,7 +286,20 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 			}
 		}
 	}
+	_, ownership := redirectOwnership(ctx)
+	inbound.tunOptions.StrictRuleOwnership = ownership != nil
+	if ownership != nil {
+		inbound.tunOptions.OwnedRouteProtocol = 239
+	}
 	return inbound, nil
+}
+
+func redirectOwnership(ctx context.Context) (string, *tun.RedirectOwnership) {
+	owner := service.FromContext[*adapter.RootRedirectOwnership](ctx)
+	if owner == nil {
+		return "sing-box", nil
+	}
+	return owner.TableName, &tun.RedirectOwnership{RedirectTable: owner.RedirectTable, TProxyTable: owner.TProxyTable, RulePriority: owner.RulePriority}
 }
 
 func uidToRange(uidList badoption.Listable[uint32]) []ranges.Range[uint32] {
@@ -385,6 +398,7 @@ func (t *Inbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 			if t.usePlatformAutoRedirect {
 				t.autoRedirect, err = newPlatformAutoRedirect(t)
 			} else {
+				tableName, ownership := redirectOwnership(t.ctx)
 				t.autoRedirect, err = tun.NewAutoRedirect(tun.AutoRedirectOptions{
 					TunOptions:      &t.tunOptions,
 					Context:         t.ctx,
@@ -392,7 +406,8 @@ func (t *Inbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 					Logger:          t.logger,
 					NetworkMonitor:  t.networkManager.NetworkMonitor(),
 					InterfaceFinder: t.networkManager.InterfaceFinder(),
-					TableName:       "sing-box",
+					TableName:       tableName,
+					Ownership:       ownership,
 					DisableNFTables: t.disableNFTables,
 				})
 			}
