@@ -35,7 +35,7 @@ func openWorkDir() (*os.File, error) {
 		}
 		fd = next
 		var stat unix.Stat_t
-		if unix.Fstat(fd, &stat) != nil || stat.Uid != 0 || stat.Mode&0002 != 0 || ((part == "etonify" || part == "runtime") && stat.Mode&0077 != 0) {
+		if unix.Fstat(fd, &stat) != nil || !workDirComponentAllowed(part, stat.Uid, stat.Gid, stat.Mode) {
 			unix.Close(fd)
 			return nil, Reason("work_dir_denied")
 		}

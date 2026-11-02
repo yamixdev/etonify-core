@@ -16,7 +16,7 @@ import (
 )
 
 var coreCommit = "unknown"
-var moduleVersion = "0.1.0"
+var moduleVersion = "0.1.1"
 
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "version" {
