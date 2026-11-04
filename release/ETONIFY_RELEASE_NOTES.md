@@ -1,5 +1,13 @@
 ## Etonify Core 1.15 alpha test base
 
+### 1.15.0-alpha.10-etonify.6
+
+- Remove Etonify's standalone root daemon and its routing-ownership hooks. Upstream platform support is unchanged.
+- Backport upstream `1a55e9e` (forward endpoint local flows to TUN) and `9f1cd1ef` (close UDP sockets when device addresses change).
+- Backport routed-port support into the pinned sing-tun fork while retaining the NAT, reset, fragment and async-close regression fixes.
+- Apply URLTest exclusions to a running instance without interrupting attached connections. Cancel old checks and reject stale results and requests from a replaced runtime.
+- Initialize exclusions before group startup so excluded members cannot be selected during the client handshake.
+
 ### 1.15.0-alpha.10-etonify.4
 
 - Add the optional standalone Android arm64 root daemon with signed module delivery, restricted app-UID RPC access and owned routing recovery.

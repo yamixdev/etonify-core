@@ -6,10 +6,13 @@ import (
 )
 
 type ExperimentalOptions struct {
-	CacheFile *CacheFileOptions `json:"cache_file,omitempty"`
-	ClashAPI  *ClashAPIOptions  `json:"clash_api,omitempty"`
-	V2RayAPI  *V2RayAPIOptions  `json:"v2ray_api,omitempty"`
-	Debug     *DebugOptions     `json:"debug,omitempty"`
+	// Etonify eligibility is installed before groups start, so a retained
+	// member cannot be selected during the initial client/daemon handshake.
+	URLTestExcludedTags []string          `json:"url_test_excluded_tags,omitempty"`
+	CacheFile           *CacheFileOptions `json:"cache_file,omitempty"`
+	ClashAPI            *ClashAPIOptions  `json:"clash_api,omitempty"`
+	V2RayAPI            *V2RayAPIOptions  `json:"v2ray_api,omitempty"`
+	Debug               *DebugOptions     `json:"debug,omitempty"`
 }
 
 type CacheFileOptions struct {

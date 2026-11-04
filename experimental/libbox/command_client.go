@@ -672,6 +672,23 @@ func (c *CommandClient) URLTestWithRequestJSON(requestJSON string) error {
 	return nil
 }
 
+// SetURLTestExcludedOutboundsJSON replaces live automatic-selection/probe
+// exclusions without restarting the runtime or interrupting attached flows.
+// expected_started_at must be captured using GetStartedAt for that runtime.
+func (c *CommandClient) SetURLTestExcludedOutboundsJSON(requestJSON string) error {
+	request := new(daemon.URLTestExcludedOutboundsRequest)
+	if err := protojson.Unmarshal([]byte(requestJSON), request); err != nil {
+		return err
+	}
+	if request.ExpectedStartedAt <= 0 {
+		return E.New("expected_started_at is required")
+	}
+	_, err := callWithResult(c, func(ctx context.Context, client daemon.StartedServiceClient) (*emptypb.Empty, error) {
+		return client.SetURLTestExcludedOutbounds(ctx, request)
+	})
+	return err
+}
+
 func (c *CommandClient) CancelURLTest(groupTag string, targetOutboundTag string) error {
 	_, err := callWithResult(c, func(ctx context.Context, client daemon.StartedServiceClient) (*emptypb.Empty, error) {
 		return client.CancelURLTest(ctx, &daemon.URLTestCancelRequest{

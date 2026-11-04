@@ -265,6 +265,13 @@ func resolveURLTestTargets(boxService *Instance, groupTag string, targetTag stri
 	if err != nil {
 		return nil, err
 	}
+	eligibleTargets := targets[:0]
+	for _, target := range targets {
+		if !boxService.urlTestHistoryStorage.IsExcluded(target.tag) {
+			eligibleTargets = append(eligibleTargets, target)
+		}
+	}
+	targets = eligibleTargets
 
 	if excludeTag != "" {
 		excluded := make(map[string]bool)
@@ -470,6 +477,11 @@ func (s *StartedService) runURLTestSession(ctx context.Context, sessionKey strin
 }
 
 func (s *StartedService) runURLTestSessionWithProbe(ctx context.Context, sessionKey string, groupTag string, session *urlTestSession, targets []urlTestTarget, options urlTestSessionOptions, runProbe urlTestProbe) {
+	revision, eligibilityContext := session.instance.urlTestHistoryStorage.Eligibility()
+	ctx, cancelEligibility := context.WithCancel(ctx)
+	defer cancelEligibility()
+	stopEligibility := context.AfterFunc(eligibilityContext, func() { session.requestCancel("eligibility_changed"); cancelEligibility() })
+	defer stopEligibility()
 	defer session.cancel()
 	defer s.finishURLTestSession(sessionKey, session)
 	selectionUpdater := newURLTestSelectionUpdater(1500*time.Millisecond, func() {
@@ -481,7 +493,7 @@ func (s *StartedService) runURLTestSessionWithProbe(ctx context.Context, session
 	})
 
 	probe := func(probeContext context.Context, link string, outbound adapter.Outbound) (uint16, error) {
-		if session.networkGeneration != session.instance.urlTestHistoryStorage.Generation() {
+		if ctx.Err() != nil || session.instance.urlTestHistoryStorage.IsExcluded(outbound.Tag()) || session.networkGeneration != session.instance.urlTestHistoryStorage.Generation() {
 			session.requestCancel("network_changed")
 			return 0, context.Canceled
 		}
@@ -510,7 +522,7 @@ func (s *StartedService) runURLTestSessionWithProbe(ctx context.Context, session
 				Error:     errorMessage,
 				ErrorCode: errorCode,
 			}
-			if session.instance.urlTestHistoryStorage.StoreForGeneration(session.networkGeneration, target.tag, history) {
+			if session.instance.urlTestHistoryStorage.StoreForEligibility(session.networkGeneration, revision, target.tag, history) {
 				s.emitURLTestResult(session, target.tag, history)
 				session.recordResult(false)
 				s.emitURLTestSession(session, "running", "")
@@ -526,7 +538,7 @@ func (s *StartedService) runURLTestSessionWithProbe(ctx context.Context, session
 			Delay:  delay,
 			Status: adapter.URLTestStatusAvailable,
 		}
-		if session.instance.urlTestHistoryStorage.StoreForGeneration(session.networkGeneration, target.tag, history) {
+		if session.instance.urlTestHistoryStorage.StoreForEligibility(session.networkGeneration, revision, target.tag, history) {
 			s.emitURLTestResult(session, target.tag, history)
 			session.recordResult(true)
 			s.emitURLTestSession(session, "running", "")

@@ -119,6 +119,9 @@ func (s *StartedService) newInstance(ctx context.Context, profileContent string,
 		}
 	}
 	urlTestHistoryStorage := urltest.NewHistoryStorage()
+	if options.Experimental != nil {
+		urlTestHistoryStorage.SetExcludedTags(options.Experimental.URLTestExcludedTags)
+	}
 	ctx = service.ContextWithPtr(ctx, urlTestHistoryStorage)
 	i := &Instance{
 		ctx:                   ctx,

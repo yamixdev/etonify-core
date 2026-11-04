@@ -26,7 +26,7 @@ func newForwardFixture(t *testing.T, options tun.UDPNatOptions) *forwardFixture 
 	p := &fixturePort{ranges: []tun.SelectorRange{{Start: 50000, Count: 32}}, occupied: make(map[netip.AddrPort]bool), reserved: make(map[netip.AddrPort]bool)}
 	w := &packetCapture{}
 	h := &fixtureHandler{port: p}
-	d := tun.NewForwardDispatcher(h, w, logger.NOP(), options, time.Minute)
+	d := tun.NewForwardDispatcher(h, w, logger.NOP(), 0, options, time.Minute)
 	judged := make(chan struct{}, 16)
 	f := &forwardFixture{t: t, dispatcher: d, stage: d.NewStage(nil, func() { judged <- struct{}{} }), port: p, writeback: w, handler: h, judged: judged}
 	t.Cleanup(d.Close)

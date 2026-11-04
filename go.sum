@@ -442,6 +442,8 @@ github.com/sagernet/tailscale v1.102.1-sing-box-1.14-mod.5.0.20260916041743-66c9
 github.com/sagernet/tailscale v1.102.1-sing-box-1.14-mod.5.0.20260916041743-66c96c36515b/go.mod h1:PV+Zt5IUWh9Hyp2nVwWfxEfU0yzImduBpKGxLI1pfNs=
 github.com/sagernet/tailscale v1.102.1-sing-box-1.14-mod.5.0.20260925112514-35e61219dedd h1:PzEFeBqDaSUdoWE77NptloLTd1sNT1JAiFThgGq5rlo=
 github.com/sagernet/tailscale v1.102.1-sing-box-1.14-mod.5.0.20260925112514-35e61219dedd/go.mod h1:Z8Eql5l0q6mQ+etunojfaZxNJVhEkpbKGS/nnx9ZQpE=
+github.com/sagernet/tailscale v1.102.1-sing-box-1.14-mod.5.0.20261028024127-670967df7dbf h1:59b83P3sRDWJcTifDZpeVn4gZFropKsNdYWuPfhqI1w=
+github.com/sagernet/tailscale v1.102.1-sing-box-1.14-mod.5.0.20261028024127-670967df7dbf/go.mod h1:Z8Eql5l0q6mQ+etunojfaZxNJVhEkpbKGS/nnx9ZQpE=
 github.com/sagernet/wireguard-go v0.0.8-0.20260917055437-bc6039037038 h1:1APVQQ0gdlzLXg1fcBVGx+k5xgCiQwB3rvsIKpUT+9A=
 github.com/sagernet/wireguard-go v0.0.8-0.20260917055437-bc6039037038/go.mod h1:er10sELpmzLXq7S7Pbc1Zsbyapcr+/gxNAHKTo6fzVA=
 github.com/sagernet/wireguard-go v0.0.8-0.20260929150556-ca3bc60c4ce7 h1:MiffQUqKBKoAHz7nkHqh4EmjJsz2M8FHeUdPUdnNyvs=

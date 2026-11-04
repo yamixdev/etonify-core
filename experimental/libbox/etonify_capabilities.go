@@ -37,6 +37,7 @@ type etonifyCapabilitySet struct {
 	SupportsURLTestExhaustive               bool     `json:"supports_url_test_exhaustive"`
 	SupportsURLTestCancel                   bool     `json:"supports_url_test_cancel"`
 	SupportsURLTestHandoff                  bool     `json:"supports_url_test_handoff"`
+	SupportsLiveURLTestExclusions           bool     `json:"supports_live_url_test_exclusions"`
 	SupportsConfigCheck                     bool     `json:"supports_config_check"`
 	SupportsCloseConnections                bool     `json:"supports_close_connections"`
 	SupportsRealitySpiderX                  bool     `json:"supports_reality_spider_x"`
@@ -84,6 +85,7 @@ func EtonifyCapabilities() string {
 		SupportsURLTestExhaustive:         true,
 		SupportsURLTestCancel:             true,
 		SupportsURLTestHandoff:            true,
+		SupportsLiveURLTestExclusions:     true,
 		SupportsConfigCheck:               true,
 		SupportsCloseConnections:          true,
 		SupportsRealitySpiderX:            true,

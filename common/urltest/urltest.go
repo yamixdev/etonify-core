@@ -29,6 +29,10 @@ type HistoryStorage struct {
 	updateHooks          []*observable.Subscriber[struct{}]
 	selectionUpdateHooks []*observable.Subscriber[struct{}]
 	externallyManaged    bool
+	excludedTags         map[string]struct{}
+	eligibilityRevision  uint64
+	eligibilityContext   context.Context
+	eligibilityCancel    context.CancelFunc
 }
 
 type networkHistoryEntry struct {
@@ -189,7 +193,7 @@ func (s *HistoryStorage) StoreForGeneration(generation uint64, tag string, histo
 		return false
 	}
 	s.access.Lock()
-	if generation != s.generation {
+	if generation != s.generation || s.excludedLocked(tag) {
 		s.access.Unlock()
 		return false
 	}
@@ -213,6 +217,9 @@ func notifyUpdated(updateHooks []*observable.Subscriber[struct{}]) {
 func (s *HistoryStorage) Close() error {
 	s.access.Lock()
 	defer s.access.Unlock()
+	if s.eligibilityCancel != nil {
+		s.eligibilityCancel()
+	}
 	s.updateHooks = nil
 	s.selectionUpdateHooks = nil
 	return nil
