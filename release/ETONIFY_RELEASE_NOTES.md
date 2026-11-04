@@ -1,5 +1,13 @@
 ## Etonify Core 1.15 alpha test base
 
+### 1.15.0-alpha.10-etonify.7
+
+- Merge upstream sing-tun dev through `7ac0256fa09ddf7215f3a7ccd0845ed18b235c4a` into the pinned Etonify fork.
+- Preserve UDP selector quarantine, fragment coverage, single-owner Close, reset generations and batched loopback writes.
+- Include upstream TCP session cleanup, atomic Android package-list updates and network-monitor/routing fixes for Linux and Windows.
+- Keep the forward NAT overlay compatible with the MTU argument of NewForwardDispatcher; validate the actual overlay under the race detector.
+- Add a regression for accepted TCP judgement cleanup after the handshake while retaining the local RST guard. Privileged platform tests and phone validation remain separate from host checks.
+
 ### 1.15.0-alpha.10-etonify.6
 
 - Remove Etonify's standalone root daemon and its routing-ownership hooks. Upstream platform support is unchanged.
