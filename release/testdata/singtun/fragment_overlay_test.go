@@ -120,8 +120,8 @@ func (*etonifySharedPort) WritePackets([][]byte) error { return nil }
 
 func TestEtonifyForwardFragmentDispatcherDoubleCloseKeepsSharedNAT(t *testing.T) {
 	port := &etonifySharedPort{}
-	first := NewForwardDispatcher(nil, nil, nil, UDPNatOptions{}, 0)
-	second := NewForwardDispatcher(nil, nil, nil, UDPNatOptions{}, 0)
+	first := NewForwardDispatcher(nil, nil, nil, 1500, UDPNatOptions{}, 0)
+	second := NewForwardDispatcher(nil, nil, nil, 1500, UDPNatOptions{}, 0)
 	shared := first.natFor(port)
 	if second.natFor(port) != shared {
 		t.Fatal("initial allocator is not shared")
@@ -129,7 +129,7 @@ func TestEtonifyForwardFragmentDispatcherDoubleCloseKeepsSharedNAT(t *testing.T)
 	defer second.Close()
 	first.Close()
 	first.Close()
-	third := NewForwardDispatcher(nil, nil, nil, UDPNatOptions{}, 0)
+	third := NewForwardDispatcher(nil, nil, nil, 1500, UDPNatOptions{}, 0)
 	defer third.Close()
 	if third.natFor(port) != shared {
 		t.Fatal("repeated Close removed a NAT allocator still owned by another dispatcher")
