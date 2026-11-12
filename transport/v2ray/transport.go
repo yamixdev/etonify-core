@@ -28,6 +28,9 @@ func NewServerTransport(ctx context.Context, logger logger.ContextLogger, option
 	}
 	switch options.Type {
 	case C.V2RayTransportTypeHTTP:
+		if options.HTTPOptions.RawTCP {
+			return nil, E.New("raw_tcp is only supported for HTTP client transports")
+		}
 		return v2rayhttp.NewServer(ctx, logger, options.HTTPOptions, tlsConfig, handler)
 	case C.V2RayTransportTypeWebsocket:
 		return v2raywebsocket.NewServer(ctx, logger, options.WebsocketOptions, tlsConfig, handler)

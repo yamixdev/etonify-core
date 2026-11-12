@@ -1,5 +1,11 @@
 ## Etonify Core 1.15 alpha test base
 
+### 1.15.0-alpha.10-etonify.8
+
+- Keep TUN packet processing and shutdown responsive while intercepted DNS waits for an upstream connection.
+- Backport sing-tun fixes for TUN write `ENOBUFS` and IPv4 IDs in Go-stack UDP replies.
+- Support Xray TCP HTTP headers over plain TCP and TLS in client transports.
+
 ### 1.15.0-alpha.10-etonify.7
 
 - Merge upstream sing-tun dev through `7ac0256fa09ddf7215f3a7ccd0845ed18b235c4a` into the pinned Etonify fork.

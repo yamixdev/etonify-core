@@ -22,6 +22,7 @@ import (
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 
+	"golang.org/x/net/http/httpguts"
 	"golang.org/x/net/http2"
 )
 
@@ -33,6 +34,7 @@ type Client struct {
 	serverAddr M.Socksaddr
 	transport  common.TypedValue[http.RoundTripper]
 	http2      bool
+	rawTCP     bool
 	requestURL url.URL
 	host       []string
 	method     string
@@ -42,7 +44,11 @@ type Client struct {
 
 func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, options option.V2RayHTTPOptions, tlsConfig tls.Config) (adapter.V2RayClientTransport, error) {
 	var transport http.RoundTripper
-	if tlsConfig == nil {
+	if options.RawTCP {
+		if tlsConfig != nil {
+			dialer = tls.NewDialer(dialer, tlsConfig)
+		}
+	} else if tlsConfig == nil {
 		transport = &http.Transport{
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 				return dialer.DialContext(ctx, network, M.ParseSocksaddr(addr))
@@ -62,7 +68,32 @@ func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, opt
 		}
 	}
 	if options.Method == "" {
-		options.Method = http.MethodPut
+		if options.RawTCP {
+			options.Method = http.MethodGet
+		} else {
+			options.Method = http.MethodPut
+		}
+	}
+	headers := options.Headers.Build()
+	if options.RawTCP {
+		if !httpguts.ValidHeaderFieldName(options.Method) {
+			return nil, E.New("invalid TCP HTTP method")
+		}
+		for _, host := range options.Host {
+			if !httpguts.ValidHostHeader(host) {
+				return nil, E.New("invalid TCP HTTP host")
+			}
+		}
+		for name, values := range headers {
+			if !httpguts.ValidHeaderFieldName(name) {
+				return nil, E.New("invalid TCP HTTP header name")
+			}
+			for _, value := range values {
+				if !httpguts.ValidHeaderFieldValue(value) {
+					return nil, E.New("invalid TCP HTTP header value")
+				}
+			}
+		}
 	}
 	var requestURL url.URL
 	if tlsConfig == nil {
@@ -71,13 +102,25 @@ func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, opt
 		requestURL.Scheme = "https"
 	}
 	requestURL.Host = serverAddr.String()
-	requestURL.Path = options.Path
-	err := badhttp.URLSetPath(&requestURL, options.Path)
-	if err != nil {
-		return nil, E.Cause(err, "parse path")
-	}
-	if !strings.HasPrefix(requestURL.Path, "/") {
-		requestURL.Path = "/" + requestURL.Path
+	if options.RawTCP {
+		path := options.Path
+		if !strings.HasPrefix(path, "/") {
+			path = "/" + path
+		}
+		target, err := url.ParseRequestURI(path)
+		if err != nil {
+			return nil, E.Cause(err, "parse TCP request target")
+		}
+		requestURL.Path, requestURL.RawPath = target.Path, target.RawPath
+		requestURL.RawQuery, requestURL.ForceQuery = target.RawQuery, target.ForceQuery
+	} else {
+		requestURL.Path = options.Path
+		if err := badhttp.URLSetPath(&requestURL, options.Path); err != nil {
+			return nil, E.Cause(err, "parse path")
+		}
+		if !strings.HasPrefix(requestURL.Path, "/") {
+			requestURL.Path = "/" + requestURL.Path
+		}
 	}
 	client := &Client{
 		ctx:        ctx,
@@ -86,8 +129,9 @@ func NewClient(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, opt
 		requestURL: requestURL,
 		host:       options.Host,
 		method:     options.Method,
-		headers:    options.Headers.Build(),
-		http2:      tlsConfig != nil,
+		headers:    headers,
+		http2:      tlsConfig != nil && !options.RawTCP,
+		rawTCP:     options.RawTCP,
 	}
 	client.transport.Store(transport)
 	return client, nil
@@ -120,8 +164,16 @@ func (c *Client) dialHTTP(ctx context.Context) (net.Conn, error) {
 	default:
 		request.Host = c.host[rand.Intn(hostLen)]
 	}
-
-	return NewHTTP1Conn(conn, request), nil
+	if c.rawTCP {
+		for key, values := range request.Header {
+			if len(values) > 1 {
+				request.Header[key] = []string{values[rand.Intn(len(values))]}
+			}
+		}
+	}
+	httpConn := NewHTTP1Conn(conn, request)
+	httpConn.rawTCP = c.rawTCP
+	return httpConn, nil
 }
 
 func (c *Client) dialHTTP2(ctx context.Context) (net.Conn, error) {
@@ -189,10 +241,14 @@ func (c *Client) SetKeepIdleConnections(keep bool) {
 }
 
 func (c *Client) CloseIdleConnections() {
-	CloseIdleConnections(c.transport.Load())
+	if !c.rawTCP {
+		CloseIdleConnections(c.transport.Load())
+	}
 }
 
 func (c *Client) Close() error {
-	c.transport.Store(ResetTransport(c.transport.Load()))
+	if !c.rawTCP {
+		c.transport.Store(ResetTransport(c.transport.Load()))
+	}
 	return nil
 }

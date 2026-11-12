@@ -92,6 +92,7 @@ type V2RayHTTPOptions struct {
 	Path        string                     `json:"path,omitempty"`
 	Method      string                     `json:"method,omitempty"`
 	Headers     badoption.HTTPHeader       `json:"headers,omitempty"`
+	RawTCP      bool                       `json:"raw_tcp,omitempty"`
 	IdleTimeout badoption.Duration         `json:"idle_timeout,omitempty"`
 	PingTimeout badoption.Duration         `json:"ping_timeout,omitempty"`
 }

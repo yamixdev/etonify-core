@@ -25,10 +25,13 @@ import (
 type HTTPConn struct {
 	net.Conn
 	request        *http.Request
+	rawTCP         bool
 	requestWritten bool
 	responseRead   bool
 	responseCache  *buf.Buffer
 }
+
+const maxRawTCPHeaderSize = 8 * 1024
 
 func NewHTTP1Conn(conn net.Conn, request *http.Request) *HTTPConn {
 	if request.Header.Get("Host") == "" {
@@ -42,19 +45,27 @@ func NewHTTP1Conn(conn net.Conn, request *http.Request) *HTTPConn {
 
 func (c *HTTPConn) Read(b []byte) (n int, err error) {
 	if !c.responseRead {
-		reader := std_bufio.NewReader(c.Conn)
-		response, err := http.ReadResponse(reader, c.request)
-		if err != nil {
-			return 0, E.Cause(err, "read response")
-		}
-		if response.StatusCode != 200 {
-			return 0, E.New("v2ray-http: unexpected status: ", response.Status)
+		var reader *std_bufio.Reader
+		if c.rawTCP {
+			reader = std_bufio.NewReaderSize(c.Conn, maxRawTCPHeaderSize)
+			if err := discardRawTCPResponseHeader(reader); err != nil {
+				return 0, E.Cause(err, "read TCP response header")
+			}
+		} else {
+			reader = std_bufio.NewReader(c.Conn)
+			response, err := http.ReadResponse(reader, c.request)
+			if err != nil {
+				return 0, E.Cause(err, "read response")
+			}
+			if response.StatusCode != 200 {
+				return 0, E.New("v2ray-http: unexpected status: ", response.Status)
+			}
 		}
 		if cacheLen := reader.Buffered(); cacheLen > 0 {
 			c.responseCache = buf.NewSize(cacheLen)
-			_, err = c.responseCache.ReadFullFrom(reader, cacheLen)
-			if err != nil {
+			if _, err := c.responseCache.ReadFullFrom(reader, cacheLen); err != nil {
 				c.responseCache.Release()
+				c.responseCache = nil
 				return 0, E.Cause(err, "read cache")
 			}
 		}
@@ -71,6 +82,23 @@ func (c *HTTPConn) Read(b []byte) (n int, err error) {
 		}
 	}
 	return c.Conn.Read(b)
+}
+
+func discardRawTCPResponseHeader(reader *std_bufio.Reader) error {
+	for size := 0; size < maxRawTCPHeaderSize; {
+		line, err := reader.ReadSlice('\n')
+		size += len(line)
+		if err == std_bufio.ErrBufferFull {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		if size <= maxRawTCPHeaderSize && string(line) == "\r\n" {
+			return nil
+		}
+	}
+	return E.New("TCP response header too large")
 }
 
 func (c *HTTPConn) Write(b []byte) (int, error) {
@@ -114,7 +142,7 @@ func (c *HTTPConn) writeRequest(payload []byte) error {
 }
 
 func (c *HTTPConn) ReaderReplaceable() bool {
-	return c.responseRead
+	return c.responseRead && (c.responseCache == nil || c.responseCache.Len() == 0)
 }
 
 func (c *HTTPConn) WriterReplaceable() bool {
