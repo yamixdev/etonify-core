@@ -1,5 +1,9 @@
 ## Etonify Core 1.15 alpha test base
 
+### 1.15.0-alpha.10-etonify.9
+
+- Backport the Go-stack TCP splice fix for buffers that reference unmapped memory.
+
 ### 1.15.0-alpha.10-etonify.8
 
 - Keep TUN packet processing and shutdown responsive while intercepted DNS waits for an upstream connection.
